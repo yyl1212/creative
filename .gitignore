@@ -2,3 +2,8 @@
 .env.*
 !.env.example
 data/
+node_modules/
+dist/
+.astro/
+bin/
+.superpowers/
