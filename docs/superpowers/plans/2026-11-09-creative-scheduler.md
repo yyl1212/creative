@@ -63,10 +63,10 @@ flowchart LR
 
 **Interfaces:** 消费既有 v1；产生 `task`、`outbox`、`stage FILE`、`submit BATCH_ID`、`receipt BATCH_ID` 五个显式操作。调用固定 `--binding` 私有文件，绑定 origin/token/state_dir，不接受任意 URL。未确认包保留；提交前检查当前任务。
 
-- [ ] 写传输隔离测试并运行，确认缺少实现导致失败。
-- [ ] 实现固定三接口、禁重定向/代理、0600 私有工件、排他写入与 SHA-256 校验；返回安全错误。
-- [ ] 编写提示词/config/场景；逐条对照 v1 字段与任务状态。
-- [ ] 运行 `python3 -m unittest discover -s tests -p 'test_research_transport.py' -v`，Expected: 全部通过；提交。
+- [x] 写传输隔离测试并运行，确认缺少实现导致失败。
+- [x] 实现固定三接口、禁重定向/代理、0600 私有工件、排他写入与 SHA-256 校验；返回安全错误。
+- [x] 编写提示词/config/场景；逐条对照 v1 字段与任务状态。
+- [x] 运行 `python3 -m unittest discover -s tests -p 'test_research_transport.py' -v`，Expected: 全部通过；提交。
 
 ### Task 2: 平台验证与交付记录
 
@@ -74,7 +74,7 @@ flowchart LR
 
 **Interfaces:** 消费 Task 1 的固定提示词与传输脚本。平台临时任务只访问隔离 HTTP 和工件，不消费真实模型 API 或导入真实候选。
 
-- [ ] 创建短期隔离平台任务，验证 HTTP 能力；成功后继续两次独立唤起恢复和重叠调度验证。每批试验小于 10 分钟，结束删除测试任务。
-- [ ] 根据实测如实记录全部验收项；有阻塞时保持真实配置禁用、M3 未通过，列出解除条件。
-- [ ] 回归 Go test/build/vet、Astro 构建/公开测试、Python 传输测试；Expected: 全部离线检查通过。
+- [x] 创建短期隔离平台任务，验证 HTTP 能力；成功后继续两次独立唤起恢复和重叠调度验证。每批试验小于 10 分钟，结束删除测试任务。
+- [x] 根据实测如实记录全部验收项；有阻塞时保持真实配置禁用、M3 未通过，列出解除条件。
+- [x] 回归 Go test/build/vet、Astro 构建/公开测试、Python 传输测试；Expected: 全部离线检查通过。
 - [ ] 一次全分支独立审查，修复重要问题并回归，提交 Git 草稿 PR，等待 CI。

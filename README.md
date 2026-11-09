@@ -2,7 +2,7 @@
 
 从真实需求出发的工具平台。当前已实现双语空站、安全管理登录、研究任务与候选接收，以及迭代 3 的原文核验、需求池、两家模型适配和费用记录。产品清单为 `[]`，生产需求库初始为空。模型默认禁用，未接入真实搜寻、付费模型调用、广告、支付、收入或访问统计。本轮只验收 macOS 桌面浏览器，其他终端不在当前范围。
 
-迭代 0 已完成主线/环境准备和定时平台隔离试验；本机定时任务的 HTTP 网络权限未通过，跨次恢复和串行验证仍阻塞，不能启用真实搜寻。详见 [定时任务运行记录](docs/research-task-operations.md)。
+迭代 4 已提供固定搜寻提示词、默认禁用的运行配置、准确字节 outbox 传输工具与隔离场景。定时实测仍未打通 HTTP，平台跨次交付恢复、串行与真实搜寻关卡未通过，M3 未完成。详见 [运行手册](docs/research-task-operations.md) 和 [迭代 4 验收记录](docs/iteration-04-validation.md)。
 
 ## 本地运行
 
@@ -103,6 +103,7 @@ npm test
 CGO_ENABLED=0 go test ./... -count=1 -timeout 9m
 CGO_ENABLED=0 go build ./cmd/creative ./cmd/creative-admin
 CGO_ENABLED=0 go vet ./...
+python3 -m unittest discover -s tests -p 'test_research_transport.py' -v
 ```
 
 Node 检查实际构建产物的路由、零产品、双语 SEO、noindex、公开配置与哨兵隔离。Go 集成测试覆盖认证边界、登录轮换、注销/失效/恢复、持久化重启、CSRF、账号/来源限流、真实计数和迁移漂移。验收结果与剩余条件见 [迭代交付记录](docs/iteration-01-validation.md)。
