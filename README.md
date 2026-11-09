@@ -1,10 +1,10 @@
 # Creative
 
-从真实需求出发的工具平台。新流程由外部 OpenAI/DeepSeek 智能体完成搜索、原文解析、分析、去重整合和立项判断，通过后调用网站接口导入为“已立项、待开发设计”。网站提供契约校验、幂等存储、证据留痕和后续开发/发布管理；旧候选核验流程继续兼容。公开产品清单为 `[]`，不把测试样例或研究结论当成已上线产品。当前页面范围为 macOS 桌面浏览器。
+从真实需求出发的工具平台。新流程由外部 OpenAI/DeepSeek 智能体完成搜索、原文解析、分析、去重整合和立项判断，通过后调用网站接口导入为“已立项、待开发设计”。网站提供契约校验、幂等存储、证据留痕和后续开发/发布管理；旧资料可查，站内候选核验与人工立项入口已停用。公开产品清单为 `[]`，不把测试样例或研究结论当成已上线产品。当前页面范围为 macOS 桌面浏览器。
 
 定时搜寻保持禁用。已提供 Codex 提示词任务、新立项包契约、完整需求目录接口和固定 outbox 传输工具；真实联网及跨运行验收通过前不启用。见 [外部模型立项运行说明](docs/agent-project-operations.md)、[验证记录](docs/agent-project-validation.md)；旧流程见 [运行手册](docs/research-task-operations.md)。
 
-迭代 5 新增 `/admin/developments`、`/admin/reports`、`/admin/settings`；需求池可复核立项，费用页可核账。发布准备/核验/回滚及备份恢复仅由受控 CLI 执行，服务维护自动保留最近 7 份一致性备份。定时搜寻继续禁用。见 [运维手册](docs/operations.md) 与 [迭代 5 验收记录](docs/iteration-05-validation.md)。
+管理后台提供需求池、开发工作区、导入批次、接收记录、每日报告、费用与用量及智能体接入权限管理。搜寻、分析和立项判断全部由外部 Codex 完成；网站不加载模型配置、不抓取原文、不消费旧研究队列。发布与备份恢复仍通过受控 CLI，维护循环保留数据清理和最近 7 份一致性备份。见 [运维手册](docs/operations.md)。
 
 ## 本地运行
 
@@ -54,37 +54,27 @@ CGO_ENABLED=0 go run ./cmd/creative-admin migrate
 | `CREATIVE_LISTEN` | `127.0.0.1:8080`；默认仅本机监听 |
 | `CREATIVE_CSRF_KEY` | 必填，32 字节密钥的 64 位十六进制表示 |
 | `CREATIVE_PRODUCTS` | `src/data/products.json`；启动时校验并读取，清单改变后重启以刷新总览；缺失/损坏拒绝启动 |
-| `CREATIVE_PROVIDERS_CONFIG` | `config/providers.json`；仅 OpenAI/DeepSeek，默认均禁用，模型名称必须显式填写 |
 | `CREATIVE_TRUSTED_PROXY` | 默认空，忽略 X-Real-IP；填写明确的代理 IP 后仅信任来自该地址的 X-Real-IP |
 
 公开产物只读取三项公开配置；后台/研究数据不进入 Astro。后台不接受 Bearer token 作为管理员凭证。写操作需要 CSRF，GET 注销不生效。会话用 SCS + SQLite 持久化，30 分钟空闲/12 小时绝对有效期，登录轮换、注销销毁。HTTPS 配置启用 Secure/HttpOnly/host-only Cookie。后台私有响应 no-store/noindex，模板自动转义，无第三方脚本。
 
 当前总览的需求/合格/完成数量来自 SQLite，产品来自公开清单，不代表生产发布已核验。缺失运营指标显示“未接入 / 未知”。生产代理必须保持原管理 Host、覆盖 X-Real-IP 并限制后台直连；TLS 和代理部署另行验收，本轮未部署。
 
-## 研究任务与候选接收
+## 外部研究结果接收
 
-启动 Go 服务时设置 `CREATIVE_RESEARCH_ORIGIN=http://127.0.0.1:8080`。同一个监听端口按 Host 分流：浏览器使用 `http://localhost:8080/admin/`，执行端使用 `http://127.0.0.1:8080/api/research/v1/`。正式环境请配置独立 admin/API 主机和 HTTPS，代理保留原 Host；不允许拿管理 Cookie 调用机器接口。
+1. 在「智能体接入」登记 Codex 并私下保存一次展示的 Bearer token。研究 API 默认关闭，启用时必须使用与管理后台不同的 Host。
+2. 外部 Codex 在获得授权后，通过 `creative-admin intake-create` 登记接收主题、语言和目标。创建/取消/恢复会话不执行搜寻，也不会启用 Codex 日程；完整命令见 [运行说明](docs/agent-project-operations.md)。后台「接收记录」仅展示状态。
+3. Codex 读取 `GET /api/research/v1/task` 与 `GET /api/research/v1/catalog`，完成搜索、原文分析、去重和立项判断。通过后按 [立项包契约](schemas/project-package.v1.schema.json) 提交 `POST /api/research/v1/projects`，直接登记为已立项、待开发设计。
+4. 无通过项目时，允许提交 `POST /api/research/v1/batches` 的空 `candidates=[]` 运行报告。新报告仅接受活动且有缺口的外部立项会话，同步保存用量与状态并返回 `completed`，不触发站内核验。新非空旧候选包返回 410。
+5. 通过批次回执确认完成，在「导入批次」「需求池」「开发工作区」管理资料。网站不自动恢复等待或暂停会话；取消/恢复由外部 Codex 按授权通过私有 CLI 完成。
 
-1. 管理员进入“执行端”，登记名称并私下保存本次显示的令牌。服务端只保存 SHA-256 摘要；重新生成立即撤销旧令牌。
-2. 进入“搜寻任务”，选择执行端、主题、中文/英文和合格需求目标（默认 3）。每个执行端只有一个当前任务；取消后可恢复，或创建新任务替代旧任务。
-3. 执行端使用 `Authorization: Bearer <私有令牌>` 读取 `GET /api/research/v1/task`。无任务返回 `{"task":null}`；任务携带完整 `strong-wtp.v1` 硬规则及当前状态。
-4. 按 [v1 Schema](schemas/demand-batch.v1.schema.json) 提交 `POST /api/research/v1/batches`，Content-Type 为 application/json；先在执行平台私有工件中保存稳定批次 ID 和准确载荷字节。不要把实际令牌写入命令历史、样例或提示词。
-5. 202 与 `Location`/`receipt_url` 只代表可靠接收。首次 GET 回执为 `pending_validation`，逐项 outcome/need_id 为 null；工作循环随后给出 `qualified/needs_evidence/duplicate/rejected`。模型未配置或技术故障时批次为 `paused_service`，未完成项仍为 null。到“提交批次”“需求池”查看原因及当前有效资格。
+同一身份与批次 ID 的原字节重试返回原接收回执，不同字节 409；旧包即使已取消也可查询和原样重试。旧任务的 `should_continue` 固定为 false。已有队列保留为历史记录，不再继续执行。旧后台研究写入口返回 410，旧模型设置书签跳转费用页；无需数据库迁移。
 
-单包 1 MiB / 20 候选、单执行端 60 请求/分钟和进程 8 个并发是传输保护；返回 429 与 Retry-After 后可以继续，不是总搜寻次数或费用上限。无效 JSON（含重复键）400，身份无效 401，未分配任务/回执 404，冲突/取消/旧规则 409，过大 413，Schema/内容类型错误 422，暂不可用 503。API Host 不符为 421，方法错误为 405。所有错误为 `{"error":{"code":"…","field":"…","message":"…"}}`，不会回显请求内容或内部堆栈。
+单包 1 MiB、单执行端 60 请求/分钟、进程 8 并发仍作为传输保护，不是总搜索次数或费用上限。认证、Host、CSRF、JSON Schema 与归属校验保持。无效 JSON 400，身份无效 401，未分配任务/回执 404，冲突或非活动会话 409，退役操作 410，过大 413，Schema/内容类型错误 422，暂不可用 503；错误不回显原文或内部堆栈。
 
-重试必须保留原始字节（空格也属于内容）；相同身份与批次 ID 返回原接收回执，不同字节为 409。取消后拒绝新批次，仍允许查询及原样重试已入库批次；读取任务不会撤销取消。不同执行端的批次隔离。原始包、候选索引、运行费用报告和待验证状态在同一事务保存。网站进程启动持久核验循环，用数据库租约和逐候选检查点恢复；失去租约的旧进程不能写入结果，崩溃后租约最多约 2 分钟到期。模型默认禁用时明确暂停，不访问外部原文或模型。
+## 费用与历史资料
 
-`internal/research/testdata/batch.json` 只有隔离虚构证据，测试全部使用临时库，不得导入真实需求池。替代方案字段使用 name/url/checked_at/method/limitations/basis；模型用量仅接受 OpenAI/DeepSeek 标识，非模型调用使用 model:null，未知费用保持 null，不冒充已核对费用。详见 [迭代 3 子计划](docs/superpowers/plans/2026-11-09-creative-verification.md) 与 [验收记录](docs/iteration-03-validation.md)。
-
-## 核验与费用操作
-
-1. `config/providers.json` 仅含非敏感配置。`primary` 选择主厂商；`fallback` 默认为空，只有明确启用、验证并配置的备选厂商才参与故障切换。模型 ID 不预设账户可用性；启用前完成对应真实连接验证，再设 `enabled/validated` 并由私有进程环境提供凭据。后台可保存同样的非敏感配置，数据库保存值优先于此文件，重启后生效；不在网页或仓库填写密钥。
-2. OpenAI 使用 Responses 的严格 JSON Schema、`store:false`；DeepSeek 使用 Chat Completions 的 JSON 模式。拒绝、截断、空白、重复字段或格式异常均不产生资格。格式修正最多一次、单次 HTTP 额外重试最多两次；这不限制总搜寻次数。
-3. 来源仅接受公开 HTTP(S) 的 80/443 端口，连接时校验并固定公网地址，逐跳检查重定向，拒绝登录/非正文响应和超大页面。只支持可明确绑定作者与时间的静态文章/评论；不绕过登录、验证码或访问限制。未知元数据、不可访问来源返回补证。
-4. 程序核对 3 名独立用户、2 个原始站点、2 名直接付费用户及价格/既有消费依据；重复用户或引文不累计。资格最多 30 天且不超过付费原文的 12 个月时限。补证使用原 external_id、新 batch_id，入库即撤销旧资格；已完成需求不会被补证覆盖。标题不参与单独去重。
-5. 到“提交批次”查看每项结果，在需求详情查看最近核验或历史版本；材料超过完整语义复核范围时转管理员复核，不能截断历史后假定独立。平台故障在服务恢复后由管理员点击“重试未完成项”；已完成检查点不重跑。单来源失败按补证处理。当前有效资格变化会更新任务缺口；取消不会被定时器恢复。满 24 小时的等待线索任务可由维护循环恢复检查。
-6. 网站调用在请求前记一笔未知费用，即使超时也保留；只记录实际返回的 token，用量不自动换算成金额。外部 usage_id 按执行端去重，可补齐未知信息，矛盾金额或重复账单标为冲突。页面按来源/币种分别精确汇总，自报金额不视为已核对；实际核账在管理页另存，不覆盖自报金额；同厂商账单行不可重复核账。
+模型调用只记录 OpenAI/DeepSeek，非模型工具的 model 为 null；未知费用保持 null。费用页区分外部自报、已核账与未知，不把推测金额当实际账单。网站已停止自身模型调用，历史费用仍可查询和核账。仓库 `testdata` 全为隔离测试材料，不能导入真实需求池。
 
 维护循环启动时执行一次，此后每日上海时间 08:00 后执行。原始页面与批次字节保留 30 天，每次核验的 Decision、来源摘要与研究资料保留 180 天，补证不删除旧核验版本；过期原始包仍保留哈希和初次接收回执，保障原字节幂等重试。必要费用、审计、完成需求和任务配置保留。清理不修改已登记迁移，也不删除公开产品。
 
@@ -119,13 +109,13 @@ cmd/creative-admin/     私有管理员与迁移命令
 internal/auth/          密码、账户有效性、限流与审计
 internal/httpserver/    会话、CSRF、管理路由与模板渲染
 internal/store/         SQLite 打开与迁移校验
-internal/research/      任务、接收、资格、去重、持久队列、需求池与费用
+internal/research/      外部立项导入、接收、历史资料、开发与费用
 internal/source/        防 SSRF 原文抓取、作者与日期绑定
 internal/model/         OpenAI Responses / DeepSeek Chat 语义复核
-internal/worker/        进程内恢复循环与每日维护
+internal/worker/        数据保留与备份维护（不消费研究队列）
 internal/usage/         在线接收与迁移共用的外部费用记录
 internal/jsonutil/      接收包与模型结果共用的严格 JSON 检查
-config/                非敏感的模型配置
+config/                外部提示词任务配置与历史模型配置
 schemas/                内嵌需求批次 v1 JSON Schema
 migrations/             版本化 SQL
 web/admin/              内嵌管理模板与自制 CSS

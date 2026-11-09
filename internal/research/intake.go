@@ -136,6 +136,15 @@ func publicURL(raw string) bool {
 }
 
 func (s *Service) Receive(p auth.Producer, raw []byte) ([]byte, error) {
+	return s.receive(p, raw, false)
+}
+
+// ReceiveReport 是生产入口；Receive 仅用于旧资料处理及历史回归。
+func (s *Service) ReceiveReport(p auth.Producer, raw []byte) ([]byte, error) {
+	return s.receive(p, raw, true)
+}
+
+func (s *Service) receive(p auth.Producer, raw []byte, externalOnly bool) ([]byte, error) {
 	b, err := s.parse(raw)
 	if err != nil {
 		return nil, err
@@ -161,6 +170,14 @@ func (s *Service) Receive(p auth.Producer, raw []byte) ([]byte, error) {
 	if err != sql.ErrNoRows {
 		return nil, err
 	}
+	if externalOnly {
+		if len(b.Candidates) != 0 {
+			return nil, fail(410, "candidate_intake_retired", "/candidates", "站内候选核验已停用；请由外部 Codex 判断后提交立项包")
+		}
+		if err = recomputeTasks(tx, time.Now()); err != nil {
+			return nil, err
+		}
+	}
 	task, err := scanTask(tx.QueryRow("SELECT "+taskColumns+" FROM research_tasks WHERE id=? AND producer_id=?", b.TaskID, p.ID))
 	if err == sql.ErrNoRows {
 		return nil, fail(404, "task_not_found", "/task_id", "任务不存在或未分配给该执行端")
@@ -171,17 +188,24 @@ func (s *Service) Receive(p auth.Producer, raw []byte) ([]byte, error) {
 	if task.State == "cancelled" || !task.Current {
 		return nil, fail(409, "task_cancelled", "/task_id", "任务已取消或被替代")
 	}
+	if externalOnly && (!projectTask(task) || task.State != "active") {
+		return nil, fail(409, "intake_not_active", "/task_id", "仅活动的外部立项接收会话允许提交新报告")
+	}
 	if projectTask(task) && len(b.Candidates) > 0 {
 		return nil, fail(409, "project_package_required", "/schema_version", "新模式只接收立项包，未通过候选保留在外部工件")
 	}
 	if task.RulesVersion != b.RulesVersion {
 		return nil, fail(409, "rules_changed", "/rules_version", "请读取当前任务规则并重新整理新批次")
 	}
-	reception, err = json.Marshal(map[string]any{"batch_id": b.BatchID, "status": "pending_validation", "receipt_url": "/api/research/v1/batches/" + b.BatchID})
+	status := "pending_validation"
+	if externalOnly {
+		status = "completed"
+	}
+	reception, err = json.Marshal(map[string]any{"batch_id": b.BatchID, "status": status, "receipt_url": "/api/research/v1/batches/" + b.BatchID})
 	if err != nil {
 		return nil, err
 	}
-	result, err := tx.Exec("INSERT INTO research_batches(producer_id,batch_id,task_id,rules_version,run_id,payload,payload_hash,reception) VALUES (?,?,?,?,?,?,?,?)", p.ID, b.BatchID, b.TaskID, b.RulesVersion, b.RunID, raw, digest, reception)
+	result, err := tx.Exec("INSERT INTO research_batches(producer_id,batch_id,task_id,rules_version,run_id,payload,payload_hash,reception,status) VALUES (?,?,?,?,?,?,?,?,?)", p.ID, b.BatchID, b.TaskID, b.RulesVersion, b.RunID, raw, digest, reception, status)
 	if err != nil {
 		return nil, err
 	}
@@ -211,6 +235,11 @@ func (s *Service) Receive(p auth.Producer, raw []byte) ([]byte, error) {
 	}
 	if err = usage.RecordExternal(tx, p.ID, time.Now().Unix(), b.RunReport.Usage); err != nil {
 		return nil, err
+	}
+	if externalOnly && b.RunReport.State != "submitted" {
+		if _, err = tx.Exec("UPDATE research_tasks SET state=?,version=version+1,updated_at=unixepoch() WHERE id=?", b.RunReport.State, task.ID); err != nil {
+			return nil, err
+		}
 	}
 	if err = recomputeTasks(tx, time.Now()); err != nil {
 		return nil, err
@@ -278,7 +307,7 @@ func (s *Service) Receipt(producer auth.Producer, batchID string) (Receipt, erro
 		return receipt, err
 	}
 	for rows.Next() {
-		r := Result{ValidationState: "pending_validation", ReasonCodes: []string{}, Issues: []string{}, Suggestions: []string{"等待网站原文核验；接收成功不代表证据合格"}}
+		r := Result{ValidationState: "pending_validation", ReasonCodes: []string{}, Issues: []string{}, Suggestions: []string{"旧核验已停用；后续研究与立项判断由外部 Codex 完成，接收成功不代表证据合格"}}
 		var stored *string
 		if err = rows.Scan(&r.ExternalID, &stored); err != nil {
 			rows.Close()

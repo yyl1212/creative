@@ -106,7 +106,7 @@ func (a *App) serveResearch(w http.ResponseWriter, r *http.Request) {
 		if path == "projects" {
 			reception, err = a.research.ImportProject(producer, raw)
 		} else {
-			reception, err = a.research.Receive(producer, raw)
+			reception, err = a.research.ReceiveReport(producer, raw)
 		}
 		if err != nil {
 			researchError(w, err)

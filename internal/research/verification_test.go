@@ -200,7 +200,7 @@ func TestRecomputeTarget(t *testing.T) {
 		t.Fatal(e)
 	}
 	got, e := s.CurrentTask(p)
-	if e != nil || got.QualifiedCount != 1 || got.RemainingGap != 2 || !got.ShouldContinue {
+	if e != nil || got.QualifiedCount != 1 || got.RemainingGap != 2 || got.ShouldContinue {
 		t.Fatalf("premature target %+v %v", got, e)
 	}
 	for i := 0; i < 2; i++ {
@@ -357,7 +357,7 @@ func TestSingleSourceFailureAndWaiting(t *testing.T) {
 		t.Fatal(e)
 	}
 	current, e := s.CurrentTask(p)
-	if e != nil || current.State != "active" {
+	if e != nil || current.State != "waiting_for_signals" {
 		t.Fatalf("%+v %v", current, e)
 	}
 }

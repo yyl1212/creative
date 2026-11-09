@@ -7,20 +7,11 @@ import (
 	"net/url"
 	"strings"
 	"testing"
-
-	"github.com/yyl1212/creative/internal/model"
 )
 
 func TestOperationsAdminAccessAndSettings(t *testing.T) {
 	b, cfg := setupResearch(t)
-	b.app.Close()
-	cfg.RuntimeModel = model.Config{Primary: "openai", Providers: map[string]model.Provider{"openai": {Model: "runtime-demo"}}}
-	app, err := New(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer app.Close()
-	b.app = app
+	app := b.app
 	_, machineToken, err := app.Auth.CreateProducer("operations-machine", "owner", "offline")
 	if err != nil {
 		t.Fatal(err)
@@ -39,52 +30,25 @@ func TestOperationsAdminAccessAndSettings(t *testing.T) {
 		}
 	}
 	b.login(t)
-	page := b.request("GET", "/admin/settings", nil, nil)
-	if page.Code != 200 || !strings.Contains(page.Body.String(), "runtime-demo") || !strings.Contains(page.Body.String(), "当前运行") || !strings.Contains(page.Body.String(), "重启") {
-		t.Fatalf("settings: %d %s", page.Code, page.Body.String())
+	if page := b.request("GET", "/admin/settings", nil, nil); page.Code != 303 || page.Header().Get("Location") != "/admin/usage" {
+		t.Fatal("old settings bookmark", page.Code)
 	}
+	page := b.request("GET", "/admin/usage", nil, nil)
 	for _, path := range []string{"/admin/settings", "/admin/usage/1/reconcile"} {
 		if w := b.request("POST", path, nil, nil); w.Code != 403 {
-			t.Fatalf("CSRF not enforced %s: %d", path, w.Code)
+			t.Fatal("CSRF", path, w.Code)
 		}
 	}
-	values := url.Values{"gorilla.csrf.Token": {token(t, page)}, "version": {"0"}, "primary": {"deepseek"}, "fallback": {"openai"}, "openai_model": {"saved-openai"}, "deepseek_model": {"saved-deepseek"}, "deepseek_enabled": {"on"}, "deepseek_validated": {"on"}}
+	values := url.Values{"gorilla.csrf.Token": {token(t, page)}, "api_key": {"sentinel-private-value"}}
 	if w := b.request("POST", "/admin/settings", values, map[string]string{"Origin": "https://attacker.example"}); w.Code != 403 {
-		t.Fatalf("foreign origin: %d", w.Code)
+		t.Fatal("foreign origin", w.Code)
 	}
-	if w := b.request("POST", "/admin/settings", values, nil); w.Code != 303 {
-		t.Fatalf("save settings: %d %s", w.Code, w.Body.String())
+	if w := b.request("POST", "/admin/settings", values, nil); w.Code != 410 || strings.Contains(w.Body.String(), "sentinel-private-value") {
+		t.Fatal("retired settings or secret reflection", w.Code)
 	}
-	if w := b.request("POST", "/admin/settings", values, nil); w.Code != 409 {
-		t.Fatalf("stale settings: %d", w.Code)
-	}
-	page = b.request("GET", "/admin/settings", nil, nil)
-	if page.Code != 200 || !strings.Contains(page.Body.String(), "saved-deepseek") || !strings.Contains(page.Body.String(), "runtime-demo") {
-		t.Fatalf("saved/runtime distinction: %d %s", page.Code, page.Body.String())
-	}
-	if app.runtimeModel.Primary != "openai" {
-		t.Fatal("save changed active runtime config")
-	}
-	values.Set("version", "1")
-	values.Set("primary", "other")
-	if w := b.request("POST", "/admin/settings", values, nil); w.Code != 422 {
-		t.Fatalf("third provider accepted: %d", w.Code)
-	}
-	values.Set("primary", "openai")
-	values.Set("fallback", "deepseek")
-	values.Set("openai_model", "sk-sentinel0123456789")
-	if w := b.request("POST", "/admin/settings", values, nil); w.Code != 422 || strings.Contains(w.Body.String(), "sk-sentinel0123456789") {
-		t.Fatalf("secret accepted or reflected: %d", w.Code)
-	}
-	values.Set("openai_model", "demo")
-	values.Set("api_key", "sentinel-private-value")
-	if w := b.request("POST", "/admin/settings", values, nil); w.Code != 422 {
-		t.Fatalf("extra secret field accepted: %d", w.Code)
-	}
-	values.Del("api_key")
-	values["primary"] = []string{"openai", "deepseek"}
-	if w := b.request("POST", "/admin/settings", values, nil); w.Code != 422 {
-		t.Fatalf("ambiguous form accepted: %d", w.Code)
+	var saved int
+	if err := cfg.DB.QueryRow("SELECT count(*) FROM app_settings WHERE name='model_config'").Scan(&saved); err != nil || saved != 0 {
+		t.Fatal("settings persisted", saved, err)
 	}
 	unauth := &browser{app: app, cookies: map[string]*http.Cookie{}}
 	csrf := token(t, unauth.request("GET", "/admin/login", nil, nil))
@@ -99,8 +63,8 @@ func TestOperationsAdminAccessAndSettings(t *testing.T) {
 func TestOperationsAdminReportAndReconciliation(t *testing.T) {
 	b, cfg := setupResearch(t)
 	b.login(t)
-	if w := b.request("GET", "/admin/settings", nil, nil); w.Code != 200 || !strings.Contains(w.Body.String(), `name="version" value="0"`) {
-		t.Fatalf("initial disabled settings unavailable: %d %s", w.Code, w.Body.String())
+	if w := b.request("GET", "/admin/settings", nil, nil); w.Code != 303 || w.Header().Get("Location") != "/admin/usage" {
+		t.Fatalf("retired settings redirect: %d %s", w.Code, w.Body.String())
 	}
 	for _, path := range []string{"/admin/reports", "/admin/reports?date=2026-11-09"} {
 		w := b.request("GET", path, nil, nil)

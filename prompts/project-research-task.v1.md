@@ -18,9 +18,11 @@
 
 生成本轮 UUID run_id，保存启动时间、代码/提示词版本。读取持久私有 `research-state.json`，恢复查询队列、来源记录、候选与 external_id 对应、待补证、未确认 outbox、usage_id 和退出原因。首次为空，禁止拿仓库测试样例充当真实需求。
 
-先调用 task 和 outbox，再查询所有未确认包的 receipt。旧任务也可查回执，不可混入新任务。completed 才表示导入完成；project 接收回执还应有 development_state=approved。超时视为结果未知，优先查回执，必要时重发原冻结字节，不能换 ID 绕过冲突。旧批次的 pending_validation/validating 不属于新流程成功，不重复构造立项包，等待管理员处理历史批次。
+先调用 task 和 outbox，再查询所有未确认包的 receipt。旧任务也可查回执，不可混入新任务。completed 才表示导入完成；project 接收回执还应有 development_state=approved。超时视为结果未知，优先查回执，必要时重发原冻结字节，不能换 ID 绕过冲突。旧批次的 pending_validation/validating 不属于新流程成功，不重复构造立项包，记录为已停用的历史批次，不触发重试核验。
 
 只处理当前任务，要求 rules.decision_mode=agent_project、rules_version 受支持、state=active、should_continue=true。没有任务、旧流程模式、cancelled、target_reached、paused_service 或 waiting_for_signals 时不搜索/提交新包。每次搜索、原文获取、立项判断与提交之前重新读 task；取消优先。
+
+接收会话的创建、取消和恢复不在后台页面或研究 HTTP API 操作。只有经营者明确授权的受控本机运行，才可按 `docs/agent-project-operations.md` 使用 creative-admin intake-* CLI；普通定时任务不得因无会话或暂停状态自行恢复。旧模式先经授权取消再创建 agent_project，不自动转换。网站维护不恢复等待状态，Codex 日程也不会被 CLI 开启。
 
 调用 catalog 保存全部需求和 revision。它包括旧候选、已有项目和已上线需求，均须比较，不能只看标题。目录过大返回 catalog_requires_review 时停止立项，请求分批比对方案，禁止截断后假定独立。
 
@@ -68,7 +70,7 @@
 
 catalog_changed：重新取完整目录并重新整合判断，用新 batch_id；project_duplicate/project_alias_conflict：整合原需求，不改标题/key 绕过；版本冲突：重新读取目录和实际状态，不覆盖正在开发的项目。401/403/421 停止并报告绑定问题；400/413/422 保留原包，纠正契约后用新 ID；409 字节冲突停止该包；429 遵守 Retry-After；网络/5xx 每次最多额外重试两次，仍失败保留未知结果，不扩大权限。
 
-未通过候选仅保留在私有工件。当前查询队列已经充分检查仍没有新线索时，可通过旧 demand-batch.v1 提交 candidates=[]、run_report.state=waiting_for_signals 的真实报告；这只记录状态和用量，不触发站内需求判断。没有候选也不能丢弃实际用量。
+未通过候选仅保留在私有工件。当前查询队列已经充分检查仍没有新线索时，可通过 demand-batch.v1 空报告契约 提交 candidates=[]、run_report.state=waiting_for_signals 的真实报告；网站同事务记录状态和用量并立即返回 completed，不触发站内需求判断；waiting_for_signals 需后续明确授权恢复。没有候选也不能丢弃实际用量。
 
 ## 6. 保存、停止和下次续跑
 
