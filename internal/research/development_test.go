@@ -1,10 +1,12 @@
 package research
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"github.com/yyl1212/creative/internal/store"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -152,6 +154,118 @@ func TestDesignProductionOrigin(t *testing.T) {
 		if e := validDesign(d); e == nil {
 			t.Errorf("invalid production origin accepted: %s", origin)
 		}
+	}
+}
+
+func TestApprovalFreesResearchSlot(t *testing.T) {
+	for _, state := range []string{"target_reached", "cancelled", "paused_service"} {
+		t.Run(state, func(t *testing.T) {
+			s, db, n, a := approvedFixture(t)
+			for i := 0; i < 2; i++ {
+				if _, e := db.Exec("INSERT INTO needs(title,task,status,verified_at,valid_until,rules_version) SELECT title||?,task||?,'qualified',verified_at,valid_until,rules_version FROM needs WHERE id=1", fmt.Sprint(i), fmt.Sprint(i)); e != nil {
+					t.Fatal(e)
+				}
+			}
+			if _, e := db.Exec("UPDATE research_tasks SET target_count=3,state=?", state); e != nil {
+				t.Fatal(e)
+			}
+			_, q, _, e := s.Counts()
+			if e != nil || q != 3 {
+				t.Fatal(q, e)
+			}
+			if e = s.ApproveNeed(1, n.Version, a, "owner", "local"); e != nil {
+				t.Fatal(e)
+			}
+			var actual string
+			if e = db.QueryRow("SELECT state FROM research_tasks WHERE is_current=1").Scan(&actual); e != nil {
+				t.Fatal(e)
+			}
+			expected := state
+			if state == "target_reached" {
+				expected = "active"
+			}
+			if actual != expected {
+				t.Errorf("task state %s, want %s", actual, expected)
+			}
+			_, q, _, e = s.Counts()
+			if e != nil || q != 2 {
+				t.Fatalf("approved need occupies slot: %d %v", q, e)
+			}
+			tasks, e := s.Tasks()
+			if e != nil || len(tasks) != 1 || tasks[0].RemainingGap != 1 {
+				t.Fatal(tasks, e)
+			}
+			if _, e = db.Exec("UPDATE needs SET version=version+1 WHERE id=1"); e != nil {
+				t.Fatal(e)
+			}
+			_, q, _, e = s.Counts()
+			if e != nil || q != 3 {
+				t.Fatal("newly verified evidence must wait for new approval", q, e)
+			}
+		})
+	}
+}
+
+func TestRestoreCannotReviveDevelopmentApproval(t *testing.T) {
+	s, _, m := releaseFixture(t)
+	dir := t.TempDir()
+	backup, e := store.Backup(context.Background(), s.db, filepath.Join(dir, "backups"), time.Now())
+	if e != nil {
+		t.Fatal(e)
+	}
+	dest := filepath.Join(dir, "restored.db")
+	if e = store.RestoreBackup(context.Background(), backup, dest); e != nil {
+		t.Fatal(e)
+	}
+	db, e := store.Open(dest)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	restored, e := New(db)
+	if e != nil {
+		t.Fatal(e)
+	}
+	n, e := restored.Need(1, 0)
+	if e != nil {
+		t.Fatal(e)
+	}
+	d, e := restored.Development(1)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if n.Status != "pending" || n.Version == d.NeedVersion {
+		t.Errorf("restored approval remains current: status=%s needVersion=%d approvalVersion=%d", n.Status, n.Version, d.NeedVersion)
+	}
+	if _, e = restored.TaskBundle(1, "development"); e == nil {
+		t.Error("restored development bundle exported")
+	}
+	if e = restored.recordRelease(1, d.Version, m, nil); e == nil {
+		t.Error("restored review_ready directly launched")
+	}
+	code(t, restored.VerifyRelease(context.Background(), 1, d.Version, "missing", "missing"), 409)
+	if e = restored.ConfirmDesign(1, d.Version, d.Design, "owner", "local"); e == nil {
+		t.Error("restored design confirmed before new evidence")
+	}
+	// 模拟证据重新核验后，旧 unverified 批准仍不能直接使用。
+	if _, e = db.Exec("UPDATE needs SET status='qualified',valid_until=?,version=? WHERE id=1", time.Now().Add(time.Hour).Unix(), d.NeedVersion); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = restored.TaskBundle(1, "development"); e == nil {
+		t.Error("unverified development exported")
+	}
+	if e = restored.ConfirmDesign(1, d.Version, d.Design, "owner", "local"); e == nil {
+		t.Error("unverified approval bypassed")
+	}
+	if e = restored.ApproveNeed(1, d.NeedVersion, d.Approval, "owner", "local"); e != nil {
+		t.Fatal(e)
+	}
+	fresh, _ := restored.Development(1)
+	if e = restored.ConfirmDesign(1, fresh.Version, d.Design, "owner", "local"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = restored.TaskBundle(1, "development"); e != nil {
+		t.Fatal("fresh approval blocked", e)
 	}
 }
 

@@ -205,7 +205,7 @@ func invalidateRestoredAuthority(ctx context.Context, db *sql.DB) error {
 		"DELETE FROM sessions",
 		"UPDATE producers SET token_hash=NULL,version=version+1",
 		"UPDATE research_tasks SET state='paused_service',version=version+1,updated_at=unixepoch() WHERE state!='cancelled'",
-		"UPDATE needs SET status='pending',version=version+1,updated_at=unixepoch() WHERE status='completed'",
+		"UPDATE needs SET status='pending',valid_until=0,version=version+1,updated_at=unixepoch() WHERE status='completed' OR id IN (SELECT need_id FROM development_records)",
 	} {
 		if _, err = tx.ExecContext(ctx, statement); err != nil {
 			return err

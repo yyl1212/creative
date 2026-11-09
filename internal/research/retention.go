@@ -7,7 +7,7 @@ import (
 
 func qualifiedCount(tx *sql.Tx, now time.Time) (int, error) {
 	var count int
-	e := tx.QueryRow("SELECT count(*) FROM needs WHERE status='qualified' AND rules_version=? AND verified_at>0 AND valid_until>?", rulesVersion, now.Unix()).Scan(&count)
+	e := tx.QueryRow("SELECT count(*) FROM needs n WHERE n.status='qualified' AND n.rules_version=? AND n.verified_at>0 AND n.valid_until>? AND NOT EXISTS (SELECT 1 FROM development_records d WHERE d.need_id=n.id AND d.need_version=n.version AND d.verification_id=n.verification_id AND d.state!='unverified')", rulesVersion, now.Unix()).Scan(&count)
 	return count, e
 }
 func recomputeTasks(tx *sql.Tx, now time.Time) error {

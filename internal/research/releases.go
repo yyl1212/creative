@@ -6,12 +6,20 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"github.com/yyl1212/creative/internal/release"
 )
 
 // VerifyRelease 只由受控 CLI 调用。网络核验结束后在事务中再次检查开发版本与证据。
 func (s *Service) VerifyRelease(ctx context.Context, id, version int, dist, catalog string) error {
+	d, e := s.Development(id)
+	if e != nil {
+		return e
+	}
+	if d.Version != version || d.State == "unverified" {
+		return fail(409, "release_not_ready", "/state", "记录版本已变化或恢复批准未重新确认")
+	}
 	m, e := release.ReadManifest(filepath.Join(dist, ".well-known", "creative-release.json"))
 	if e != nil {
 		return e
@@ -39,7 +47,7 @@ func (s *Service) recordRelease(id, version int, m release.Manifest, observed er
 	if d.Version != version {
 		return fail(409, "development_version_conflict", "/version", "开发记录已变化，请重新核验")
 	}
-	if d.State != "review_ready" && d.State != "launched" && d.State != "failed" && d.State != "rolled_back" && d.State != "unverified" {
+	if d.State != "review_ready" && d.State != "launched" && d.State != "failed" && d.State != "rolled_back" {
 		return fail(409, "release_not_ready", "/state", "尚未取得完整开发交付")
 	}
 	raw := jsonText(m)
@@ -96,6 +104,9 @@ func (s *Service) recordRelease(id, version int, m release.Manifest, observed er
 	if e = lifecycleAudit(tx, action, id, version+1, "controlled-cli", "local"); e != nil {
 		return e
 	}
+	if e = recomputeTasks(tx, time.Now()); e != nil {
+		return e
+	}
 	if e = tx.Commit(); e != nil {
 		return e
 	}
@@ -148,6 +159,9 @@ func (s *Service) RollbackRelease(id, version int, reason, actor string) error {
 		return e
 	}
 	if e = lifecycleAudit(tx, "release_rolled_back", id, version+1, actor, "local"); e != nil {
+		return e
+	}
+	if e = recomputeTasks(tx, time.Now()); e != nil {
 		return e
 	}
 	return tx.Commit()

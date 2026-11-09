@@ -288,5 +288,8 @@ func (s *Service) ApproveNeed(id, version int, a Approval, actor, source string)
 	if e = lifecycleAudit(tx, "need_approved", id, version+1, actor, source); e != nil {
 		return e
 	}
+	if e = recomputeTasks(tx, time.Now()); e != nil {
+		return e
+	}
 	return tx.Commit()
 }

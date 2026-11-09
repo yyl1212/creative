@@ -108,6 +108,9 @@ func developmentForUpdate(tx *sql.Tx, id, version int) (Development, Need, error
 	if d.Version != version {
 		return d, Need{}, fail(409, "development_version_conflict", "/version", "开发记录已变化，请刷新后重试")
 	}
+	if d.State == "unverified" {
+		return d, Need{}, fail(409, "approval_unverified", "/state", "恢复后的旧批准不可继续使用，请重新核验并立项")
+	}
 	n, e := currentQualified(tx, id, d.NeedVersion, d.VerificationID)
 	return d, n, e
 }
@@ -270,6 +273,9 @@ func (s *Service) TaskBundle(id int, kind string) ([]byte, error) {
 	}
 	if e != nil {
 		return nil, e
+	}
+	if d.State == "unverified" {
+		return nil, fail(409, "approval_unverified", "/state", "请重新核验并立项后导出任务包")
 	}
 	n, e := currentQualified(tx, id, d.NeedVersion, d.VerificationID)
 	if e != nil {
