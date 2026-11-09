@@ -1,6 +1,6 @@
 # Creative
 
-从真实需求出发的工具平台。当前已实现双语空站、安全管理登录，以及迭代 2 的研究任务、执行端令牌、候选接收与回执。产品清单为 `[]`，需求库初始为空；收到候选后仍须等待迭代 3 的原文核验，不计入合格或已完成需求。未接入真实搜寻、模型调用、广告、支付、收入或访问统计。
+从真实需求出发的工具平台。当前已实现双语空站、安全管理登录、研究任务与候选接收，以及迭代 3 的原文核验、需求池、两家模型适配和费用记录。产品清单为 `[]`，生产需求库初始为空。模型默认禁用，未接入真实搜寻、付费模型调用、广告、支付、收入或访问统计。本轮只验收 macOS 桌面浏览器，其他终端不在当前范围。
 
 迭代 0 已完成主线/环境准备和定时平台隔离试验；本机定时任务的 HTTP 网络权限未通过，跨次恢复和串行验证仍阻塞，不能启用真实搜寻。详见 [定时任务运行记录](docs/research-task-operations.md)。
 
@@ -52,6 +52,7 @@ CGO_ENABLED=0 go run ./cmd/creative-admin migrate
 | `CREATIVE_LISTEN` | `127.0.0.1:8080`；默认仅本机监听 |
 | `CREATIVE_CSRF_KEY` | 必填，32 字节密钥的 64 位十六进制表示 |
 | `CREATIVE_PRODUCTS` | `src/data/products.json`；启动时校验并读取，清单改变后重启以刷新总览；缺失/损坏拒绝启动 |
+| `CREATIVE_PROVIDERS_CONFIG` | `config/providers.json`；仅 OpenAI/DeepSeek，默认均禁用，模型名称必须显式填写 |
 | `CREATIVE_TRUSTED_PROXY` | 默认空，忽略 X-Real-IP；填写明确的代理 IP 后仅信任来自该地址的 X-Real-IP |
 
 公开产物只读取三项公开配置；后台/研究数据不进入 Astro。后台不接受 Bearer token 作为管理员凭证。写操作需要 CSRF，GET 注销不生效。会话用 SCS + SQLite 持久化，30 分钟空闲/12 小时绝对有效期，登录轮换、注销销毁。HTTPS 配置启用 Secure/HttpOnly/host-only Cookie。后台私有响应 no-store/noindex，模板自动转义，无第三方脚本。
@@ -66,19 +67,30 @@ CGO_ENABLED=0 go run ./cmd/creative-admin migrate
 2. 进入“搜寻任务”，选择执行端、主题、中文/英文和合格需求目标（默认 3）。每个执行端只有一个当前任务；取消后可恢复，或创建新任务替代旧任务。
 3. 执行端使用 `Authorization: Bearer <私有令牌>` 读取 `GET /api/research/v1/task`。无任务返回 `{"task":null}`；任务携带完整 `strong-wtp.v1` 硬规则及当前状态。
 4. 按 [v1 Schema](schemas/demand-batch.v1.schema.json) 提交 `POST /api/research/v1/batches`，Content-Type 为 application/json；先在执行平台私有工件中保存稳定批次 ID 和准确载荷字节。不要把实际令牌写入命令历史、样例或提示词。
-5. 202 与 `Location`/`receipt_url` 只代表可靠接收。GET 回执当前为 `pending_validation`，逐项 outcome/need_id 为 null，合格数量不增加。到管理“提交批次”查看同一材料。
+5. 202 与 `Location`/`receipt_url` 只代表可靠接收。首次 GET 回执为 `pending_validation`，逐项 outcome/need_id 为 null；工作循环随后给出 `qualified/needs_evidence/duplicate/rejected`。模型未配置或技术故障时批次为 `paused_service`，未完成项仍为 null。到“提交批次”“需求池”查看原因及当前有效资格。
 
 单包 1 MiB / 20 候选、单执行端 60 请求/分钟和进程 8 个并发是传输保护；返回 429 与 Retry-After 后可以继续，不是总搜寻次数或费用上限。无效 JSON（含重复键）400，身份无效 401，未分配任务/回执 404，冲突/取消/旧规则 409，过大 413，Schema/内容类型错误 422，暂不可用 503。API Host 不符为 421，方法错误为 405。所有错误为 `{"error":{"code":"…","field":"…","message":"…"}}`，不会回显请求内容或内部堆栈。
 
-重试必须保留原始字节（空格也属于内容）；相同身份与批次 ID 返回原接收回执，不同字节为 409。取消后拒绝新批次，仍允许查询及原样重试已入库批次；读取任务不会撤销取消。不同执行端的批次隔离。当前原始包、候选索引、运行费用报告和待验证状态在同一事务保存，重启不丢失；不启动没有事实核验能力的空 worker。
+重试必须保留原始字节（空格也属于内容）；相同身份与批次 ID 返回原接收回执，不同字节为 409。取消后拒绝新批次，仍允许查询及原样重试已入库批次；读取任务不会撤销取消。不同执行端的批次隔离。原始包、候选索引、运行费用报告和待验证状态在同一事务保存。网站进程启动持久核验循环，用数据库租约和逐候选检查点恢复；失去租约的旧进程不能写入结果，崩溃后租约最多约 2 分钟到期。模型默认禁用时明确暂停，不访问外部原文或模型。
 
-`internal/research/testdata/batch.json` 只有隔离虚构证据，测试全部使用临时库，不得导入真实需求池。替代方案字段使用 name/url/checked_at/method/limitations/basis；模型用量仅接受 OpenAI/DeepSeek 标识，非模型调用使用 model:null，未知费用保持 null，不冒充已核对费用。详见 [本轮子计划](docs/superpowers/plans/2026-11-09-creative-research-intake.md) 与 [验收记录](docs/iteration-02-validation.md)。
+`internal/research/testdata/batch.json` 只有隔离虚构证据，测试全部使用临时库，不得导入真实需求池。替代方案字段使用 name/url/checked_at/method/limitations/basis；模型用量仅接受 OpenAI/DeepSeek 标识，非模型调用使用 model:null，未知费用保持 null，不冒充已核对费用。详见 [迭代 3 子计划](docs/superpowers/plans/2026-11-09-creative-verification.md) 与 [验收记录](docs/iteration-03-validation.md)。
+
+## 核验与费用操作
+
+1. `config/providers.json` 仅含非敏感配置。`primary` 选择主厂商；`fallback` 默认为空，只有明确启用、验证并配置的备选厂商才参与故障切换。模型 ID 不预设账户可用性；启用前完成对应真实连接验证，再设 `enabled/validated` 并由私有进程环境提供凭据。配置变更后重启服务，不在网页或仓库填写密钥。
+2. OpenAI 使用 Responses 的严格 JSON Schema、`store:false`；DeepSeek 使用 Chat Completions 的 JSON 模式。拒绝、截断、空白、重复字段或格式异常均不产生资格。格式修正最多一次、单次 HTTP 额外重试最多两次；这不限制总搜寻次数。
+3. 来源仅接受公开 HTTP(S) 的 80/443 端口，连接时校验并固定公网地址，逐跳检查重定向，拒绝登录/非正文响应和超大页面。只支持可明确绑定作者与时间的静态文章/评论；不绕过登录、验证码或访问限制。未知元数据、不可访问来源返回补证。
+4. 程序核对 3 名独立用户、2 个原始站点、2 名直接付费用户及价格/既有消费依据；重复用户或引文不累计。资格最多 30 天且不超过付费原文的 12 个月时限。补证使用原 external_id、新 batch_id，入库即撤销旧资格；已完成需求不会被补证覆盖。标题不参与单独去重。
+5. 到“提交批次”查看每项结果，在需求详情查看最近核验或历史版本；材料超过完整语义复核范围时转管理员复核，不能截断历史后假定独立。平台故障在服务恢复后由管理员点击“重试未完成项”；已完成检查点不重跑。单来源失败按补证处理。当前有效资格变化会更新任务缺口；取消不会被定时器恢复。满 24 小时的等待线索任务可由维护循环恢复检查。
+6. 网站调用在请求前记一笔未知费用，即使超时也保留；只记录实际返回的 token，用量不自动换算成金额。外部 usage_id 按执行端去重，可补齐未知信息，矛盾金额或重复账单标为冲突。页面按来源/币种分别精确汇总，自报金额不视为已核对；账单核对操作归迭代 5。
+
+维护循环启动时执行一次，此后每日上海时间 08:00 后执行。原始页面与批次字节保留 30 天，每次核验的 Decision、来源摘要与研究资料保留 180 天，补证不删除旧核验版本；过期原始包仍保留哈希和初次接收回执，保障原字节幂等重试。必要费用、审计、完成需求和任务配置保留。清理不修改已登记迁移，也不删除公开产品。
 
 ## 数据、迁移与回退
 
-SQLite 使用 WAL、foreign_keys、5 秒 busy_timeout 和单连接。首次启动按顺序执行 `migrations/001_initial.sql`、`002_research.sql` 并登记 SHA-256；原有 001 数据库追加 002 迁移，保留账户、会话、审计和需求；已登记 SQL 校验和变化、未知版本会拒绝启动。后续变更必须追加迁移，升级前备份，不修改已执行文件。不要将活动 WAL 数据库只复制 `.db`；停服务并关闭连接后再复制，或使用 SQLite 的一致性备份能力。
+SQLite 使用 WAL、foreign_keys、5 秒 busy_timeout 和单连接。首次启动按顺序执行 `migrations/001_initial.sql`、`002_research.sql`、`003_verification.sql` 并登记 SHA-256；原有数据库追加缺失迁移，保留账户、会话、审计、需求与接收队列；已登记 SQL 校验和变化、未知版本会拒绝启动。后续变更必须追加迁移，升级前备份，不修改已执行文件。不要将活动 WAL 数据库只复制 `.db`；停服务并关闭连接后再复制，或使用 SQLite 的一致性备份能力。
 
-本轮未操作生产数据库。002 增加研究表及审计字段；旧程序会拒绝打开含 002 的库。回退时停服务，恢复升级前的一致性备份并使用旧代码，升级后新增材料须另行保全；不要用降级 SQL 静默丢弃资料。回退代码前保留完整私有备份；不要通过删除数据库来回退生产数据。`data/`、环境文件、构建产物与开发流水记录均不提交。会话、审计、密码哈希与失败计数也属于私有数据。
+本轮未操作生产数据库。003 增加核验状态、租约、来源版本和费用记录，并为旧候选建立别名；同一迁移事务回填 002 的费用报告，复用在线费用去重和冲突规则；旧程序会拒绝打开含 003 的库。回退时停服务，恢复升级前的一致性备份并使用旧代码，升级后新增材料须另行保全；不要用降级 SQL 静默丢弃资料。回退代码前保留完整私有备份；不要通过删除数据库来回退生产数据。`data/`、环境文件、构建产物与开发流水记录均不提交。会话、审计、密码哈希与失败计数也属于私有数据。
 
 ## 验证
 
@@ -104,7 +116,13 @@ cmd/creative-admin/     私有管理员与迁移命令
 internal/auth/          密码、账户有效性、限流与审计
 internal/httpserver/    会话、CSRF、管理路由与模板渲染
 internal/store/         SQLite 打开与迁移校验
-internal/research/      任务、Schema 校验、事务接收与回执
+internal/research/      任务、接收、资格、去重、持久队列、需求池与费用
+internal/source/        防 SSRF 原文抓取、作者与日期绑定
+internal/model/         OpenAI Responses / DeepSeek Chat 语义复核
+internal/worker/        进程内恢复循环与每日维护
+internal/usage/         在线接收与迁移共用的外部费用记录
+internal/jsonutil/      接收包与模型结果共用的严格 JSON 检查
+config/                非敏感的模型配置
 schemas/                内嵌需求批次 v1 JSON Schema
 migrations/             版本化 SQL
 web/admin/              内嵌管理模板与自制 CSS
@@ -112,4 +130,4 @@ tests/                  公开产物检查
 docs/                   中文方案、计划、运维与验收记录
 ```
 
-范围按 [敏捷开发计划](docs/superpowers/plans/2026-11-09-creative-agile-delivery.md) 推进；研究 v1 接收已实现；证据核验、定时任务真实接入和开发交接属于后续迭代。无合格真实需求时不预建业务工具。
+范围按 [敏捷开发计划](docs/superpowers/plans/2026-11-09-creative-agile-delivery.md) 推进；迭代 3 离线接收/核验闭环已实现；定时任务真实接入和开发交接属于后续迭代。无合格真实需求时不预建业务工具。

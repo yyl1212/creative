@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/yyl1212/creative/internal/usage"
 	"github.com/yyl1212/creative/migrations"
 	_ "modernc.org/sqlite"
 )
@@ -101,6 +102,11 @@ func migrate(db *sql.DB) error {
 		}
 		if _, err = tx.Exec(string(contents)); err != nil {
 			return err
+		}
+		if version == 3 {
+			if err = usage.Backfill(tx); err != nil {
+				return err
+			}
 		}
 		if _, err = tx.Exec("INSERT INTO schema_migrations(version,checksum) VALUES (?,?)", version, checksum); err != nil {
 			return err

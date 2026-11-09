@@ -1,0 +1,16 @@
+{
+  "primary": "deepseek",
+  "fallback": "",
+  "providers": {
+    "openai": {
+      "enabled": false,
+      "validated": false,
+      "model": ""
+    },
+    "deepseek": {
+      "enabled": false,
+      "validated": false,
+      "model": ""
+    }
+  }
+}

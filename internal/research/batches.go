@@ -18,7 +18,12 @@ type BatchSummary struct {
 }
 type BatchDetail struct {
 	BatchSummary
-	Payload string
+	Payload        string
+	Version        int
+	RawPurged      bool
+	MetadataPurged bool
+	PauseReason    string
+	Results        []Result
 }
 
 const batchColumns = "b.id,b.batch_id,b.task_id,p.name,b.status,(SELECT count(*) FROM research_candidates c WHERE c.batch_row=b.id),b.created_at"
@@ -71,9 +76,41 @@ func (s *Service) Batch(id int) (*BatchDetail, error) {
 	if err = tx.QueryRow("SELECT payload FROM research_batches WHERE id=?", id).Scan(&raw); err != nil {
 		return nil, err
 	}
-	var formatted bytes.Buffer
-	if err = json.Indent(&formatted, raw, "", "  "); err != nil {
+	detail := &BatchDetail{BatchSummary: b, Results: []Result{}}
+	if err = tx.QueryRow("SELECT version,raw_purged,metadata_purged,pause_reason FROM research_batches WHERE id=?", id).Scan(&detail.Version, &detail.RawPurged, &detail.MetadataPurged, &detail.PauseReason); err != nil {
 		return nil, err
 	}
-	return &BatchDetail{BatchSummary: b, Payload: formatted.String()}, tx.Commit()
+	var formatted bytes.Buffer
+	if len(raw) > 0 {
+		if err = json.Indent(&formatted, raw, "", "  "); err != nil {
+			return nil, err
+		}
+	}
+	detail.Payload = formatted.String()
+	rows, err := tx.Query("SELECT external_id,result FROM research_candidates WHERE batch_row=? ORDER BY ordinal", id)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var r Result
+		var stored *string
+		if err = rows.Scan(&r.ExternalID, &stored); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		r.ValidationState = "pending_validation"
+		if stored != nil {
+			if err = json.Unmarshal([]byte(*stored), &r); err != nil {
+				rows.Close()
+				return nil, err
+			}
+		}
+		detail.Results = append(detail.Results, r)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	return detail, tx.Commit()
 }

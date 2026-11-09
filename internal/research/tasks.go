@@ -51,7 +51,6 @@ func scanTask(row interface{ Scan(...any) error }) (*Task, error) {
 	}
 	t.Rules = json.RawMessage(rules)
 	t.RemainingGap = t.TargetCount
-	// shortcut: 迭代 2 尚无核验结论；迭代 3 在此统一重算去重且未过期的资格。
 	t.ShouldContinue = t.Current && t.State == "active"
 	t.UpdatedAt = time.Unix(updated, 0).UTC().Format(time.RFC3339)
 	switch t.State {
@@ -60,7 +59,7 @@ func scanTask(row interface{ Scan(...any) error }) (*Task, error) {
 	case "paused_service":
 		t.ResumeCondition = "服务恢复并由管理员恢复"
 	case "waiting_for_signals":
-		t.ResumeCondition = "获得新线索后由管理员恢复"
+		t.ResumeCondition = "满 24 小时后由维护任务检查缺口，或管理员明确恢复"
 	}
 	return &t, nil
 }
@@ -73,6 +72,9 @@ func (s *Service) CurrentTask(producer auth.Producer) (*Task, error) {
 	if err = verifyProducer(tx, producer); err != nil {
 		return nil, err
 	}
+	if err = recomputeTasks(tx, time.Now()); err != nil {
+		return nil, err
+	}
 	t, err := scanTask(tx.QueryRow("SELECT "+taskColumns+" FROM research_tasks WHERE producer_id=? AND is_current=1", producer.ID))
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -80,23 +82,44 @@ func (s *Service) CurrentTask(producer auth.Producer) (*Task, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err = hydrateTask(tx, t, time.Now()); err != nil {
+		return nil, err
+	}
 	return t, tx.Commit()
 }
 func (s *Service) Tasks() ([]Task, error) {
-	rows, err := s.db.Query("SELECT " + taskColumns + " FROM research_tasks WHERE is_current=1 ORDER BY created_at DESC,id")
+	tx, err := s.db.Begin()
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer tx.Rollback()
+	if err = recomputeTasks(tx, time.Now()); err != nil {
+		return nil, err
+	}
+	rows, err := tx.Query("SELECT " + taskColumns + " FROM research_tasks WHERE is_current=1 ORDER BY created_at DESC,id")
+	if err != nil {
+		return nil, err
+	}
 	tasks := []Task{}
 	for rows.Next() {
 		t, e := scanTask(rows)
 		if e != nil {
+			rows.Close()
 			return nil, e
 		}
 		tasks = append(tasks, *t)
 	}
-	return tasks, rows.Err()
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	for i := range tasks {
+		if err = hydrateTask(tx, &tasks[i], time.Now()); err != nil {
+			return nil, err
+		}
+	}
+	return tasks, tx.Commit()
 }
 func (s *Service) CreateTask(producer string, topics, languages []string, target int, actor, source string) (*Task, error) {
 	if target < 1 || target > 2147483647 || len(topics) == 0 || len(topics) > 20 || len(languages) == 0 || len(languages) > 2 {
@@ -145,8 +168,14 @@ func (s *Service) CreateTask(producer string, topics, languages []string, target
 	if _, err = tx.Exec("INSERT INTO audit_events(action,account,source,object_id,details) VALUES ('task_created',?,?,?,?)", actor, source, id, `{"before":null,"after":"active","version":1}`); err != nil {
 		return nil, err
 	}
+	if err = recomputeTasks(tx, time.Now()); err != nil {
+		return nil, err
+	}
 	task, err := scanTask(tx.QueryRow("SELECT "+taskColumns+" FROM research_tasks WHERE id=?", id))
 	if err != nil {
+		return nil, err
+	}
+	if err = hydrateTask(tx, task, time.Now()); err != nil {
 		return nil, err
 	}
 	return task, tx.Commit()
@@ -184,8 +213,14 @@ func (s *Service) ChangeTask(id string, version int, action, actor, source strin
 	if _, err = tx.Exec("INSERT INTO audit_events(action,account,source,object_id,details) VALUES (?,?,?,?,?)", "task_"+action, actor, source, id, detail); err != nil {
 		return nil, err
 	}
+	if err = recomputeTasks(tx, time.Now()); err != nil {
+		return nil, err
+	}
 	task, err = scanTask(tx.QueryRow("SELECT "+taskColumns+" FROM research_tasks WHERE id=?", id))
 	if err != nil {
+		return nil, err
+	}
+	if err = hydrateTask(tx, task, time.Now()); err != nil {
 		return nil, err
 	}
 	return task, tx.Commit()

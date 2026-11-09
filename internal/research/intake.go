@@ -7,14 +7,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/netip"
 	"net/url"
 	"strings"
-	"unicode/utf8"
+	"time"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/yyl1212/creative/internal/auth"
+	"github.com/yyl1212/creative/internal/jsonutil"
+	"github.com/yyl1212/creative/internal/usage"
 	"github.com/yyl1212/creative/schemas"
 )
 
@@ -56,46 +57,13 @@ func New(db *sql.DB) (*Service, error) {
 	return &Service{db: db, schema: schema}, nil
 }
 
-type batch struct {
-	SchemaVersion string      `json:"schema_version"`
-	RulesVersion  string      `json:"rules_version"`
-	TaskID        string      `json:"task_id"`
-	BatchID       string      `json:"batch_id"`
-	RunID         string      `json:"run_id"`
-	Candidates    []candidate `json:"candidates"`
-	RunReport     struct {
-		Usage []struct {
-			ID string `json:"usage_id"`
-		}
-	} `json:"run_report"`
-}
-type candidate struct {
-	ExternalID string `json:"external_id"`
-	Title      string `json:"title"`
-	Evidence   []struct {
-		ID  string `json:"evidence_id"`
-		URL string `json:"url"`
-	} `json:"evidence"`
-	Alternatives []struct {
-		URL string `json:"url"`
-	} `json:"alternatives"`
-}
-
 func (s *Service) parse(raw []byte) (batch, error) {
 	var b batch
 	if len(raw) > 1<<20 {
 		return b, fail(413, "body_too_large", "/", "请求不能超过 1 MiB")
 	}
-	if !utf8.Valid(raw) {
-		return b, fail(400, "invalid_json", "/", "JSON 必须为有效 UTF-8")
-	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
-	if err := uniqueJSON(dec, 0); err != nil {
-		return b, fail(400, "invalid_json", "/", "JSON 无效、重复字段或嵌套过深")
-	}
-	if _, err := dec.Token(); err != io.EOF {
-		return b, fail(400, "invalid_json", "/", "请求只能包含一个 JSON 值")
+	if err := jsonutil.Check(raw); err != nil {
+		return b, fail(400, "invalid_json", "/", "JSON 无效、重复字段、非 UTF-8 或嵌套过深")
 	}
 	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
 	if err != nil {
@@ -149,48 +117,6 @@ func (s *Service) parse(raw []byte) (batch, error) {
 	return b, nil
 }
 
-// JSON 的重复键会被 encoding/json 静默覆盖，须在 Schema 校验前拒绝。
-func uniqueJSON(d *json.Decoder, depth int) error {
-	if depth > 32 {
-		return errors.New("depth")
-	}
-	tok, err := d.Token()
-	if err != nil {
-		return err
-	}
-	delim, ok := tok.(json.Delim)
-	if !ok {
-		return nil
-	}
-	switch delim {
-	case '{':
-		seen := map[string]bool{}
-		for d.More() {
-			key, err := d.Token()
-			if err != nil {
-				return err
-			}
-			s, ok := key.(string)
-			if !ok || seen[s] {
-				return errors.New("duplicate key")
-			}
-			seen[s] = true
-			if err = uniqueJSON(d, depth+1); err != nil {
-				return err
-			}
-		}
-	case '[':
-		for d.More() {
-			if err = uniqueJSON(d, depth+1); err != nil {
-				return err
-			}
-		}
-	default:
-		return errors.New("delimiter")
-	}
-	_, err = d.Token()
-	return err
-}
 func publicURL(raw string) bool {
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" || u.User != nil || u.Scheme != "http" && u.Scheme != "https" {
@@ -265,6 +191,20 @@ func (s *Service) Receive(p auth.Producer, raw []byte) ([]byte, error) {
 			return nil, err
 		}
 	}
+	for _, c := range b.Candidates {
+		if _, err = tx.Exec("UPDATE needs SET status='pending',valid_until=0,version=version+1 WHERE id=(SELECT need_id FROM need_aliases WHERE producer_id=? AND external_id=?) AND status!='completed'", p.ID, c.ExternalID); err != nil {
+			return nil, err
+		}
+		if _, err = tx.Exec("INSERT INTO need_aliases(producer_id,external_id,latest_batch) VALUES (?,?,?) ON CONFLICT(producer_id,external_id) DO UPDATE SET latest_batch=excluded.latest_batch", p.ID, c.ExternalID, id); err != nil {
+			return nil, err
+		}
+	}
+	if err = usage.RecordExternal(tx, p.ID, time.Now().Unix(), b.RunReport.Usage); err != nil {
+		return nil, err
+	}
+	if err = recomputeTasks(tx, time.Now()); err != nil {
+		return nil, err
+	}
 	return reception, tx.Commit()
 }
 
@@ -307,8 +247,14 @@ func (s *Service) Receipt(producer auth.Producer, batchID string) (Receipt, erro
 	if err != nil {
 		return receipt, err
 	}
+	if err = recomputeTasks(tx, time.Now()); err != nil {
+		return receipt, err
+	}
 	task, err := scanTask(tx.QueryRow("SELECT "+taskColumns+" FROM research_tasks WHERE id=?", taskID))
 	if err != nil {
+		return receipt, err
+	}
+	if err = hydrateTask(tx, task, time.Now()); err != nil {
 		return receipt, err
 	}
 	receipt.TargetCount = task.TargetCount
@@ -317,15 +263,22 @@ func (s *Service) Receipt(producer auth.Producer, batchID string) (Receipt, erro
 	receipt.TaskState = task.State
 	receipt.ShouldContinue = task.ShouldContinue
 	receipt.Results = []Result{}
-	rows, err := tx.Query("SELECT external_id FROM research_candidates WHERE batch_row=? ORDER BY ordinal", rowID)
+	rows, err := tx.Query("SELECT external_id,result FROM research_candidates WHERE batch_row=? ORDER BY ordinal", rowID)
 	if err != nil {
 		return receipt, err
 	}
 	for rows.Next() {
 		r := Result{ValidationState: "pending_validation", ReasonCodes: []string{}, Issues: []string{}, Suggestions: []string{"等待网站原文核验；接收成功不代表证据合格"}}
-		if err = rows.Scan(&r.ExternalID); err != nil {
+		var stored *string
+		if err = rows.Scan(&r.ExternalID, &stored); err != nil {
 			rows.Close()
 			return receipt, err
+		}
+		if stored != nil {
+			if err = json.Unmarshal([]byte(*stored), &r); err != nil {
+				rows.Close()
+				return receipt, err
+			}
 		}
 		receipt.Results = append(receipt.Results, r)
 	}

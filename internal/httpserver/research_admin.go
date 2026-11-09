@@ -11,6 +11,10 @@ import (
 )
 
 func (a *App) researchRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /admin/needs", a.needsPage)
+	mux.HandleFunc("GET /admin/needs/{id}", a.needPage)
+	mux.HandleFunc("GET /admin/usage", a.usagePage)
+	mux.HandleFunc("POST /admin/batches/{id}/retry", a.retryBatch)
 	mux.HandleFunc("GET /admin/producers", a.producersPage)
 	mux.HandleFunc("POST /admin/producers", a.createProducer)
 	mux.HandleFunc("POST /admin/producers/{id}/rotate", a.rotateProducer)
@@ -23,6 +27,28 @@ func (a *App) researchRoutes(mux *http.ServeMux) {
 }
 func stateLabel(state string) string {
 	switch state {
+	case "qualified":
+		return "合格"
+	case "pending", "needs_evidence":
+		return "待补证"
+	case "duplicate":
+		return "重复需求"
+	case "rejected":
+		return "不符合要求"
+	case "expired":
+		return "资格已过期"
+	case "unknown":
+		return "未知"
+	case "reported":
+		return "自报，未核对"
+	case "verified":
+		return "已核对"
+	case "conflict":
+		return "冲突，未计入合计"
+	case "website":
+		return "网站调用"
+	case "external":
+		return "外部执行端"
 	case "active":
 		return "进行中"
 	case "cancelled":

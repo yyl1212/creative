@@ -1,5 +1,11 @@
 {{template "research-header" .}}
 <p><a class="text-link" href="/admin/batches">← 返回批次列表</a></p>
 <div class="page-heading"><h1>批次详情</h1><p class="identifier">{{.Batch.BatchID}}</p></div>
-<section class="panel batch-detail"><dl class="facts"><div><dt>执行端</dt><dd>{{.Batch.ProducerName}}</dd></div><div><dt>状态</dt><dd>{{stateLabel .Batch.Status}}</dd></div><div><dt>候选数量</dt><dd>{{.Batch.CandidateCount}}</dd></div><div><dt>接收时间（UTC）</dt><dd><time datetime="{{.Batch.ReceivedAt}}">{{.Batch.ReceivedAt}}</time></dd></div></dl><p class="notice">材料已保存，等待原文核验。费用为执行端自报或未知，尚未核对；本批次不增加合格需求或已完成产品。</p><details open><summary>原始候选与运行报告</summary><pre class="payload" tabindex="0" aria-label="只读候选包">{{.Batch.Payload}}</pre></details></section>
+<section class="panel batch-detail"><dl class="facts"><div><dt>执行端</dt><dd>{{.Batch.ProducerName}}</dd></div><div><dt>状态</dt><dd>{{stateLabel .Batch.Status}}</dd></div><div><dt>候选数量</dt><dd>{{.Batch.CandidateCount}}</dd></div><div><dt>接收时间（UTC）</dt><dd><time datetime="{{.Batch.ReceivedAt}}">{{.Batch.ReceivedAt}}</time></dd></div></dl>
+{{if .Batch.PauseReason}}<p class="notice">{{reasonLabel .Batch.PauseReason}}</p>{{end}}
+{{if and (eq .Batch.Status "paused_service") (not .Batch.RawPurged)}}<form class="actions" method="post" action="/admin/batches/{{.Batch.ID}}/retry">{{.CSRF}}<input type="hidden" name="version" value="{{.Batch.Version}}"><button type="submit">重试未完成项</button><p class="field-help">请先确认服务恢复。已完成结论会保留。</p></form>{{end}}
+<p class="footnote">以下为本批次核验时的结论，当前资格以需求池为准。费用请到费用页面查看。</p>
+{{range .Batch.Results}}<article class="list-item"><div class="item-heading"><h2>{{.ExternalID}}</h2><span class="status">{{if .Outcome}}{{stateLabel .Outcome}}{{else}}{{stateLabel .ValidationState}}{{end}}</span></div>{{if .NeedID}}<p><a class="text-link" href="/admin/needs/{{.NeedID}}">查看需求 #{{.NeedID}} →</a></p>{{end}}{{range .ReasonCodes}}<p>{{reasonLabel .}}</p>{{end}}{{range .Issues}}<p class="field-help">{{.}}</p>{{end}}{{range .Suggestions}}<p>{{.}}</p>{{end}}</article>{{end}}
+{{if .Batch.MetadataPurged}}<p class="notice">研究元数据已到保留期限，仅保留幂等接收凭据和审计。</p>{{end}}
+{{if .Batch.RawPurged}}<p class="notice">原始候选包已按 30 天保留规则清理；相同字节的重复提交仍返回原接收回执。</p>{{else}}<details><summary>原始候选与运行报告</summary><pre class="payload" tabindex="0" aria-label="只读候选包">{{.Batch.Payload}}</pre></details>{{end}}</section>
 {{template "research-footer" .}}
