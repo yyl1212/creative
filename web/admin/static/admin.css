@@ -122,3 +122,27 @@ table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: lef
 caption { text-align: left; font-weight: 600; padding: 8px 0 18px; }
 th, td { padding: 12px 10px; border-bottom: 1px solid var(--border); }
 th { font-weight: 500; }
+
+/* 立项与开发表单使用同一套面板、分组和键盘操作。 */
+.lifecycle-panel { margin-top: 24px; }
+.section-heading { display: flex; align-items: flex-start; gap: 14px; }
+.section-heading h2 { margin: 3px 0 0; }
+.section-heading .field-help { margin-bottom: 0; }
+.step-number { display: grid; place-items: center; flex: 0 0 32px; height: 32px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--muted); }
+.form-section { border-top: 1px solid var(--border); margin: 28px 0 0; padding-top: 18px; }
+.form-section legend { padding-right: 14px; font-size: 14px; font-weight: 600; }
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; }
+.financial-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.alternative-card { margin-top: 14px; padding: 16px; border: 1px solid var(--border); border-radius: 7px; background: #fbfcfd; }
+.form-panel .check-row { display: flex; align-items: flex-start; gap: 9px; font-weight: 400; }
+.check-row input { flex: 0 0 16px; width: 16px; height: 16px; margin: 3px 0 0; accent-color: #171b24; }
+.form-footer { display: flex; gap: 24px; align-items: center; justify-content: space-between; border-top: 1px solid var(--border); margin-top: 24px; padding-top: 20px; }
+.form-footer .field-help { margin: 0; }
+.form-footer button { flex-shrink: 0; }
+button:disabled { background: #e9ecf1; border-color: #e0e4eb; color: #737d8d; cursor: not-allowed; }
+fieldset:disabled input, fieldset:disabled textarea { background: #f7f8fa; color: #667080; }
+.material-facts { margin-top: 20px; }
+.material-facts dd { white-space: pre-wrap; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+@media (max-width: 760px) { .financial-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px) { .form-grid { grid-template-columns: 1fr; } .form-footer { align-items: flex-start; flex-direction: column; gap: 12px; } }

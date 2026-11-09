@@ -210,7 +210,7 @@ func TestInitialOverview(t *testing.T) {
 	b, db, _ := setup(t)
 	b.login(t)
 	w := b.request("GET", "/admin/", nil, nil)
-	for _, label := range []string{"需求总数", "合格需求", "已完成需求", "产品数量"} {
+	for _, label := range []string{"需求总数", "合格待立项", "已完成需求", "产品数量"} {
 		if !strings.Contains(w.Body.String(), label) {
 			t.Fatal(label)
 		}

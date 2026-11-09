@@ -1,0 +1,6 @@
+{{template "research-header" .}}
+<div class="page-heading"><h1>开发工作区</h1><p>从已批准的需求开始，确认方案、交接任务并核对交付结果。</p></div>
+<section class="panel batch-list"><div class="panel-heading"><h2>最近 100 项开发记录</h2><p>研究资格与开发阶段分开显示；开发完成后的生产核验由受控运维命令执行。</p></div>
+{{range .Developments}}<article class="list-item"><div class="item-heading"><div><h3><a class="text-link" href="/admin/developments/{{.NeedID}}">{{if .Title}}{{.Title}}{{else}}需求 #{{.NeedID}}{{end}}</a></h3><p>需求 #{{.NeedID}} · 记录版本 {{.Version}} · 批准人 {{.ApprovedBy}}</p></div><span class="status">{{stateLabel .State}}</span></div><p>{{if .EvidenceCurrent}}当前证据有效{{else if eq .State "launched"}}已核验上线；后续变更需重新确认资格{{else}}证据或批准版本需重新复核{{end}} · 更新 {{.UpdatedAt}}</p></article>
+{{else}}<div class="empty-note"><p>暂无已批准立项的需求。</p><p>先在需求池逐条复核有效证据，记录替代方案、成本和交付范围。</p><a class="text-link" href="/admin/needs">前往需求池 →</a></div>{{end}}
+</section>{{template "research-footer" .}}

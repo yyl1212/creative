@@ -15,6 +15,7 @@ type Worker struct {
 	Service  *research.Service
 	Fetcher  research.SourceFetcher
 	Reviewer research.SemanticReviewer
+	Maintain func(context.Context, time.Time) error
 }
 
 func (w Worker) Run(ctx context.Context) error { return w.run(ctx, 5*time.Second) }
@@ -37,6 +38,11 @@ func (w Worker) run(ctx context.Context, interval time.Duration) error {
 		if lastDay == "" || (day != lastDay && local.Hour() >= 8) {
 			if e = w.Service.Maintenance(now); e != nil {
 				return e
+			}
+			if w.Maintain != nil {
+				if e = w.Maintain(ctx, now); e != nil {
+					return e
+				}
 			}
 			lastDay = day
 		}

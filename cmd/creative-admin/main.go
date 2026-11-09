@@ -46,9 +46,13 @@ func password(stdin bool) (string, error) {
 }
 func run() error {
 	if len(os.Args) < 2 {
-		return errors.New("用法：creative-admin migrate|create-admin|reset-password|disable-admin [--db 路径] [--username 账号] [--password-stdin]")
+		return errors.New("用法：creative-admin migrate|create-admin|reset-password|disable-admin|backup|restore|report|release-prepare|release-verify|release-rollback；子命令 --help 查看参数")
 	}
 	command := os.Args[1]
+	switch command {
+	case "backup", "restore", "report", "release-prepare", "release-verify", "release-rollback":
+		return lifecycle(command, os.Args[2:])
+	}
 	if command != "migrate" && command != "create-admin" && command != "reset-password" && command != "disable-admin" {
 		return errors.New("未知命令")
 	}

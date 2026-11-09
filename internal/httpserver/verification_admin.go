@@ -54,7 +54,7 @@ func (a *App) needPage(w http.ResponseWriter, r *http.Request) {
 		a.adminResearchError(w, r, u, e)
 		return
 	}
-	a.render(w, r, "need.html", 200, view{Username: u.Username, Page: "needs", Need: n})
+	a.render(w, r, "need.html", 200, view{Username: u.Username, Page: "needs", Need: n, AlternativeSlots: []int{0, 1, 2}})
 }
 func (a *App) usagePage(w http.ResponseWriter, r *http.Request) {
 	u, ok := a.current(w, r)

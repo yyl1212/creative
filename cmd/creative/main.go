@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"github.com/yyl1212/creative/internal/httpserver"
 	"github.com/yyl1212/creative/internal/model"
@@ -16,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 )
@@ -31,40 +31,32 @@ func run() error {
 	if err != nil || len(key) != 32 {
 		return errors.New("请配置 64 位十六进制 CREATIVE_CSRF_KEY")
 	}
-	db, err := store.Open(env("CREATIVE_DB", "data/creative.db"))
+	dbPath := env("CREATIVE_DB", "data/creative.db")
+	db, err := store.Open(dbPath)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	app, err := httpserver.New(httpserver.Config{DB: db, Origin: env("CREATIVE_ADMIN_ORIGIN", "http://localhost:8080"), CSRFKey: key, ResearchOrigin: os.Getenv("CREATIVE_RESEARCH_ORIGIN"), ProductsPath: env("CREATIVE_PRODUCTS", "src/data/products.json"), TrustedProxy: os.Getenv("CREATIVE_TRUSTED_PROXY")})
-	if err != nil {
-		return err
-	}
-	defer app.Close()
 	researchService, err := research.New(db)
 	if err != nil {
 		return err
 	}
-	providerFile, err := os.Open(env("CREATIVE_PROVIDERS_CONFIG", "config/providers.json"))
+	providers, err := loadProviders(researchService, env("CREATIVE_PROVIDERS_CONFIG", "config/providers.json"))
 	if err != nil {
 		return err
 	}
-	var providers model.Config
-	decoder := json.NewDecoder(io.LimitReader(providerFile, 16385))
-	decoder.DisallowUnknownFields()
-	err = decoder.Decode(&providers)
-	if err == nil && decoder.Decode(new(any)) != io.EOF {
-		err = errors.New("模型配置必须是单一 JSON 对象")
-	}
-	providerFile.Close()
+	app, err := httpserver.New(httpserver.Config{DB: db, Origin: env("CREATIVE_ADMIN_ORIGIN", "http://localhost:8080"), CSRFKey: key, ResearchOrigin: os.Getenv("CREATIVE_RESEARCH_ORIGIN"), ProductsPath: env("CREATIVE_PRODUCTS", "src/data/products.json"), TrustedProxy: os.Getenv("CREATIVE_TRUSTED_PROXY"), RuntimeModel: providers})
 	if err != nil {
 		return err
 	}
+	defer app.Close()
 	reviewer, err := model.New(providers, researchService)
 	if err != nil {
 		return errors.New("模型配置无效；仅支持显式配置并验证的 OpenAI/DeepSeek")
 	}
-	verificationWorker := worker.Worker{Service: researchService, Fetcher: source.New(), Reviewer: reviewer}
+	verificationWorker := worker.Worker{Service: researchService, Fetcher: source.New(), Reviewer: reviewer, Maintain: func(ctx context.Context, now time.Time) error {
+		return researchService.MaintenanceBackup(ctx, filepath.Join(filepath.Dir(dbPath), "backups"), now)
+	}}
 	server := &http.Server{Addr: env("CREATIVE_LISTEN", "127.0.0.1:8080"), Handler: app, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 * 1024}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -97,6 +89,26 @@ func run() error {
 	}
 	return nil
 }
+func loadProviders(s *research.Service, path string) (model.Config, error) {
+	saved, e := s.ModelConfig()
+	if e != nil {
+		return model.Config{}, e
+	}
+	if saved != nil {
+		return saved.Config, nil
+	}
+	f, e := os.Open(path)
+	if e != nil {
+		return model.Config{}, e
+	}
+	defer f.Close()
+	raw, e := io.ReadAll(io.LimitReader(f, 16385))
+	if e != nil {
+		return model.Config{}, e
+	}
+	return research.ParseModelConfig(raw)
+}
+
 func main() {
 	if err := run(); err != nil {
 		log.Fatal(err)

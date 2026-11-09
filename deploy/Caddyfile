@@ -1,0 +1,32 @@
+# 三个不同域名。运行前设置 CREATIVE_PUBLIC_HOST / CREATIVE_ADMIN_HOST / CREATIVE_API_HOST。
+# 公开目录仅放已审查的 dist；SQLite、备份和凭据必须在其它私有目录。
+{$CREATIVE_PUBLIC_HOST} {
+	root * /srv/creative/public
+	header {
+		-Server
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+	@private path /admin /admin/* /api /api/* /.env* /.git/* /data/* /backups/*
+	respond @private 404
+	file_server
+}
+
+{$CREATIVE_ADMIN_HOST} {
+	@admin path /admin /admin/*
+	handle @admin {
+		reverse_proxy 127.0.0.1:8080 {
+			header_up X-Real-IP {http.request.remote.host}
+			header_up -Forwarded
+		}
+	}
+	handle {
+		respond 404
+	}
+}
+
+# 定时搜寻保持禁用，机器域名不代理到后台。未来获准启用时再单独修改。
+{$CREATIVE_API_HOST} {
+	header Retry-After 86400
+	respond "研究接收服务未启用" 503
+}
