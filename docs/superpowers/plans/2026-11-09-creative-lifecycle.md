@@ -85,26 +85,26 @@ flowchart LR
 
 `store.Backup(ctx,db,directory,now)(string,error)` 保留最近 7 份；`store.RestoreBackup(ctx,source,destination) error` 原文件不动、目标必须不存在。恢复清空 sessions、禁用 admins、撤销 producers，development_records.state/release_records.state=unverified，needs.completed 回到待核验；研究任务暂停，模型保存配置禁用。
 
-- [ ] 两个独立组件在临时隔离副本测试驱动交付，主工作树由主执行者集成。
-- [ ] TestReleaseVerification 覆盖清单/构建/生产不一致、失败、幂等、回滚与过期记录；CLI 不提供网页调用入口。
-- [ ] TestRestoreBackup 覆盖一致性、最近7份、损坏/覆盖拒绝、凭据失效、发布重新核验；再集成受控 CLI 与维护备份。
-- [ ] 回归对应包及实际 CLI 隔离流程，Expected: 全部通过，真实库不变；提交。
+- [x] 两个独立组件在临时隔离副本测试驱动交付，主工作树由主执行者集成。
+- [x] TestReleaseVerification 覆盖清单/构建/生产不一致、失败、幂等、回滚与过期记录；CLI 不提供网页调用入口。
+- [x] TestRestoreBackup 覆盖一致性、最近7份、损坏/覆盖拒绝、凭据失效、发布重新核验；再集成受控 CLI 与维护备份。
+- [x] 回归对应包及实际 CLI 隔离流程，Expected: 全部通过，真实库不变；提交。
 
 ### Task 3: 日报、模型设置、费用核对与后台
 
 **Files:** operations.go、usage_view.go、main/worker、httpserver、templates/CSS、HTTP 测试。
 **Interfaces:** 非敏感模型配置带 version 保存，重启加载；费用核对带 usage version，实际费用字段与原自报并存；日报按上海日期统计。
 
-- [ ] 先写配置版本冲突/第三厂商拒绝/秘密拒绝、账单重复/精确金额/旧页冲突、日报边界及 HTTP 鉴权/CSRF 测试。
-- [ ] 实现管理表单、需求包/开发包下载、操作反馈、日常报告、设置运行值提示和费用对账，复用 token 管理。
-- [ ] macOS 桌面浏览器实测空态、隔离完整流程、键盘操作；不提供表单直接 launched 的操作。
-- [ ] Go/HTTP 回归通过，提交。
+- [x] 先写配置版本冲突/第三厂商拒绝/秘密拒绝、账单重复/精确金额/旧页冲突、日报边界及 HTTP 鉴权/CSRF 测试。
+- [x] 实现管理表单、需求包/开发包下载、操作反馈、日常报告、设置运行值提示和费用对账，复用 token 管理。
+- [x] macOS 桌面浏览器实测空态、隔离完整流程、键盘操作；不提供表单直接 launched 的操作。
+- [x] Go/HTTP 回归通过，提交。
 
 ### Task 4: 运维交付与整体验收
 
 **Files:** deploy/Caddyfile、docs/operations.md、README、iteration-05-validation、敏捷状态。
 
-- [ ] 补齐独立主机 HTTPS 路由、无私有文件发布、信任代理、备份/恢复/回滚操作；配置存在不等于已部署。
-- [ ] 全量 Go test/build/vet、Astro 构建/公开测试、Python 传输回归，单批外层570秒。
+- [x] 补齐独立主机 HTTPS 路由、无私有文件发布、信任代理、备份/恢复/回滚操作；配置存在不等于已部署。
+- [x] 全量 Go test/build/vet、Astro 构建/公开测试、Python 传输回归，单批外层570秒。
 - [ ] 一次全分支独立审查，修复重要问题，完成迁移回归和 Mac 验收。
 - [ ] Git 草稿 PR 与最终 CI；记录 M4 基础验收和真实生产限制，M3 保持禁用。
