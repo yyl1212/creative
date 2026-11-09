@@ -51,11 +51,10 @@ func Open(path string) (*sql.DB, error) {
 }
 
 func migrate(db *sql.DB) error {
-	contents, err := migrations.Files.ReadFile("001_initial.sql")
+	files, err := migrations.Files.ReadDir(".")
 	if err != nil {
 		return err
 	}
-	checksum := fmt.Sprintf("%x", sha256.Sum256(contents))
 	tx, err := db.Begin()
 	if err != nil {
 		return err
@@ -64,27 +63,48 @@ func migrate(db *sql.DB) error {
 	if _, err = tx.Exec("CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, checksum TEXT NOT NULL)"); err != nil {
 		return err
 	}
-	var count int
-	if err = tx.QueryRow("SELECT count(*) FROM schema_migrations WHERE version != 1").Scan(&count); err != nil {
+	rows, err := tx.Query("SELECT version,checksum FROM schema_migrations ORDER BY version")
+	if err != nil {
 		return err
 	}
-	if count != 0 {
-		return fmt.Errorf("数据库版本超出当前程序支持范围")
+	var previous []string
+	for rows.Next() {
+		var version int
+		var checksum string
+		if err = rows.Scan(&version, &checksum); err != nil {
+			rows.Close()
+			return err
+		}
+		if version != len(previous)+1 || version > len(files) {
+			rows.Close()
+			return fmt.Errorf("数据库迁移历史缺号或超出当前程序支持范围")
+		}
+		previous = append(previous, checksum)
 	}
-	var previous string
-	err = tx.QueryRow("SELECT checksum FROM schema_migrations WHERE version=1").Scan(&previous)
-	switch {
-	case err == sql.ErrNoRows:
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for i, file := range files {
+		version := i + 1
+		contents, err := migrations.Files.ReadFile(file.Name())
+		if err != nil {
+			return err
+		}
+		checksum := fmt.Sprintf("%x", sha256.Sum256(contents))
+		if i < len(previous) {
+			if previous[i] != checksum {
+				return fmt.Errorf("迁移 %d 校验和不一致，拒绝启动", version)
+			}
+			continue
+		}
 		if _, err = tx.Exec(string(contents)); err != nil {
 			return err
 		}
-		if _, err = tx.Exec("INSERT INTO schema_migrations(version,checksum) VALUES (1,?)", checksum); err != nil {
+		if _, err = tx.Exec("INSERT INTO schema_migrations(version,checksum) VALUES (?,?)", version, checksum); err != nil {
 			return err
 		}
-	case err != nil:
-		return err
-	case previous != checksum:
-		return fmt.Errorf("迁移 1 校验和不一致，拒绝启动")
 	}
 	return tx.Commit()
 }
