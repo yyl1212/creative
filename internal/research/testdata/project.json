@@ -1,0 +1,102 @@
+{
+  "schema_version": "creative.project-package.v1",
+  "rules_version": "strong-wtp.v1",
+  "task_id": "task-example",
+  "batch_id": "project-example-001",
+  "run_id": "run-example",
+  "submitted_at": "2026-11-08T08:30:00+08:00",
+  "candidates": [
+    {
+      "external_id": "need-example-001",
+      "title": "商品表格模板转换",
+      "language": "zh",
+      "target_user": "需要跨平台整理商品资料的卖家",
+      "job_to_be_done": "把现有商品表转换为目标模板并报告字段错误",
+      "constraints": [
+        "能够自助处理并下载结果"
+      ],
+      "evidence": [
+        {
+          "evidence_id": "ev-example-1",
+          "url": "https://example.org/example-post",
+          "author_ref": "example-author",
+          "published_at": "2026-10-09T00:00:00Z",
+          "observed_at": "2026-11-09T00:00:00Z",
+          "quote": "模拟文本：若能准确转换所需模板，我愿意每次付20元人民币。",
+          "signal": "explicit_wtp",
+          "price": {
+            "amount": "20.00",
+            "currency": "CNY",
+            "unit": "per_job"
+          },
+          "conditions": [
+            "准确支持指定模板"
+          ],
+          "unmet_need": "现有方案不能覆盖所需模板"
+        }
+      ],
+      "alternatives": [],
+      "monetization_proposal": "free",
+      "unknowns": [
+        "缺少其他独立用户及来源",
+        "尚未完成竞品实测"
+      ]
+    }
+  ],
+  "run_report": {
+    "state": "submitted",
+    "sources_checked": [
+      "example.org"
+    ],
+    "unresolved": [
+      "需要补充独立付费证据"
+    ],
+    "resume_hint": "等待网站校验结果",
+    "usage": []
+  },
+  "project": {
+    "verdict": "approved",
+    "provider": "openai",
+    "model": "fixture-model",
+    "reviewed_at": "2026-11-09T00:00:00Z",
+    "catalog_revision": "0000000000000000000000000000000000000000000000000000000000000000",
+    "task_key": "fixture-project-key",
+    "reasoning": "仅用于接口测试的自制样例，不是真实需求",
+    "deduplication": "已比较测试目录",
+    "evidence": [
+      {
+        "evidence_id": "ev-example-1",
+        "valid": true,
+        "payment": true,
+        "priced": true,
+        "reason": "自制测试结论"
+      }
+    ],
+    "approval": {
+      "review_notes": "自制测试资料：已记录 review_notes",
+      "alternative_search": "自制测试资料：已记录 alternative_search",
+      "fewer_alternatives_reason": "自制测试资料：已记录 fewer_alternatives_reason",
+      "rationale": "自制测试资料：已记录 rationale",
+      "sustainability": "自制测试资料：已记录 sustainability",
+      "resource_protection": "自制测试资料：已记录 resource_protection",
+      "self_service": "自制测试资料：已记录 self_service",
+      "gap": "自制测试资料：已记录 gap",
+      "scope": "自制测试资料：已记录 scope",
+      "exclusions": "自制测试资料：已记录 exclusions",
+      "acceptance": "自制测试资料：已记录 acceptance",
+      "acquisition": "自制测试资料：已记录 acquisition",
+      "verification_id": 0,
+      "reviewed_evidence": [
+        "ev-example-1"
+      ],
+      "alternatives": [],
+      "monetization": "free",
+      "unit_cost": "0",
+      "currency": "USD",
+      "unit": "每次",
+      "price": "0",
+      "payment_fee": "0",
+      "price_basis": ""
+    }
+  }
+}

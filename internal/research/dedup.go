@@ -51,7 +51,11 @@ func (s *Service) checkpoint(l Lease, producer string, c candidate, sources []Bo
 			if e = tx.QueryRow("SELECT status FROM needs WHERE id=?", exclude).Scan(&status); e != nil {
 				return e
 			}
-			protectCompleted = status == "completed"
+			var imported bool
+			if e = tx.QueryRow("SELECT EXISTS(SELECT 1 FROM project_imports WHERE need_id=?)", exclude).Scan(&imported); e != nil {
+				return e
+			}
+			protectCompleted = status == "completed" || imported
 		}
 		if !protectCompleted {
 			var duplicate *int
@@ -97,13 +101,13 @@ func (s *Service) checkpoint(l Lease, producer string, c candidate, sources []Bo
 				outcome = "duplicate"
 			}
 		}
-		completed := false
+		completed := protectCompleted
 		if needID != nil {
 			var status string
 			if e = tx.QueryRow("SELECT status FROM needs WHERE id=?", *needID).Scan(&status); e != nil {
 				return e
 			}
-			completed = status == "completed"
+			completed = completed || status == "completed"
 			if completed {
 				outcome = "duplicate"
 			}

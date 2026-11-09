@@ -150,6 +150,9 @@ class Transport:
     def task(self):
         return self._request("task")
 
+    def catalog(self):
+        return self._request("catalog")
+
     def _load(self, batch_id):
         envelope = decode(private_read(self.root / (identifier(batch_id) + ".batch.json")))
         try:
@@ -168,7 +171,7 @@ class Transport:
         if len(raw) > LIMIT:
             raise TransportError("payload_too_large")
         obj = decode(raw)
-        if not isinstance(obj, dict) or obj.get("schema_version") != "creative.demand-batch.v1":
+        if not isinstance(obj, dict) or obj.get("schema_version") not in ("creative.demand-batch.v1", "creative.project-package.v1"):
             raise TransportError("invalid_batch")
         for field in ("task_id", "batch_id", "run_id"):
             identifier(obj.get(field))
@@ -214,7 +217,10 @@ class Transport:
                 or task.get("rules_version") != obj["rules_version"]
                 or task.get("state") != "active" or task.get("should_continue") is not True):
             raise TransportError("task_changed_query_receipt_before_any_new_batch")
-        return self._remember(batch_id, self._request("batches", raw))
+        path = {"creative.demand-batch.v1": "batches", "creative.project-package.v1": "projects"}.get(obj.get("schema_version"))
+        if path is None:
+            raise TransportError("invalid_batch")
+        return self._remember(batch_id, self._request(path, raw))
 
     def receipt(self, batch_id):
         return self._remember(batch_id, self._request("batches/" + identifier(batch_id)))
@@ -223,7 +229,7 @@ class Transport:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binding", required=True, help="私有绑定文件路径，不含命令行凭据")
-    parser.add_argument("action", choices=("task", "outbox", "stage", "submit", "receipt"))
+    parser.add_argument("action", choices=("task", "catalog", "outbox", "stage", "submit", "receipt"))
     parser.add_argument("value", nargs="?")
     args = parser.parse_args()
     try:

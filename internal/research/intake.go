@@ -171,6 +171,9 @@ func (s *Service) Receive(p auth.Producer, raw []byte) ([]byte, error) {
 	if task.State == "cancelled" || !task.Current {
 		return nil, fail(409, "task_cancelled", "/task_id", "任务已取消或被替代")
 	}
+	if projectTask(task) && len(b.Candidates) > 0 {
+		return nil, fail(409, "project_package_required", "/schema_version", "新模式只接收立项包，未通过候选保留在外部工件")
+	}
 	if task.RulesVersion != b.RulesVersion {
 		return nil, fail(409, "rules_changed", "/rules_version", "请读取当前任务规则并重新整理新批次")
 	}
@@ -192,6 +195,13 @@ func (s *Service) Receive(p auth.Producer, raw []byte) ([]byte, error) {
 		}
 	}
 	for _, c := range b.Candidates {
+		var locked int
+		if err = tx.QueryRow("SELECT count(*) FROM project_imports i JOIN need_aliases a ON a.need_id=i.need_id WHERE a.producer_id=? AND a.external_id=?", p.ID, c.ExternalID).Scan(&locked); err != nil {
+			return nil, err
+		}
+		if locked > 0 {
+			return nil, fail(409, "project_package_required", "/candidates", "已立项项目只能通过新的外部复核包更新")
+		}
 		if _, err = tx.Exec("UPDATE needs SET status='pending',valid_until=0,version=version+1 WHERE id=(SELECT need_id FROM need_aliases WHERE producer_id=? AND external_id=?) AND status!='completed'", p.ID, c.ExternalID); err != nil {
 			return nil, err
 		}

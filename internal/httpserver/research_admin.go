@@ -202,7 +202,16 @@ func (a *App) createTask(w http.ResponseWriter, r *http.Request) {
 			topics = append(topics, text)
 		}
 	}
-	_, err = a.research.CreateTask(r.PostForm.Get("producer_id"), topics, r.PostForm["languages"], target, user.Username, a.source(r))
+	create := a.research.CreateTask
+	switch r.PostForm.Get("decision_mode") {
+	case "agent_project":
+		create = a.research.CreateProjectTask
+	case "", "website":
+	default:
+		a.adminResearchError(w, r, user, &research.Error{Status: 422, Code: "invalid_mode", Field: "/decision_mode", Message: "任务模式无效"})
+		return
+	}
+	_, err = create(r.PostForm.Get("producer_id"), topics, r.PostForm["languages"], target, user.Username, a.source(r))
 	if err != nil {
 		a.adminResearchError(w, r, user, err)
 		return

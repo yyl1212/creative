@@ -23,6 +23,21 @@ def batch():
 
 
 class TransportTests(unittest.TestCase):
+    def test_project_package_uses_fixed_import_route(self):
+        payload = batch()
+        payload["schema_version"] = "creative.project-package.v1"
+        payload["candidates"] = [{"external_id": "fixture"}]
+        payload["project"] = {"verdict": "approved"}
+        filename = self.root / "project.json"
+        filename.write_text(json.dumps(payload))
+        transport = self.module.Transport(self.binding)
+        transport.stage(filename)
+        transport.submit("fixture-batch")
+        self.assertEqual(self.requests[-1][1], "/api/research/v1/projects")
+        self.assertEqual(self.requests[-1][2], filename.read_bytes())
+        transport.catalog()
+        self.assertEqual(self.requests[-1][1], "/api/research/v1/catalog")
+
     def setUp(self):
         self.assertTrue(SCRIPT.exists(), "缺少固定目的地传输工具")
         spec = importlib.util.spec_from_file_location("research_transport", SCRIPT)

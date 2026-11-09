@@ -7,19 +7,26 @@ import (
 
 func qualifiedCount(tx *sql.Tx, now time.Time) (int, error) {
 	var count int
-	e := tx.QueryRow("SELECT count(*) FROM needs n WHERE n.status='qualified' AND n.rules_version=? AND n.verified_at>0 AND n.valid_until>? AND NOT EXISTS (SELECT 1 FROM development_records d WHERE d.need_id=n.id AND d.need_version=n.version AND d.verification_id=n.verification_id AND d.state!='unverified')", rulesVersion, now.Unix()).Scan(&count)
+	e := tx.QueryRow("SELECT count(*) FROM needs n WHERE n.status='qualified' AND n.rules_version=? AND n.verified_at>0 AND n.valid_until>? AND NOT EXISTS (SELECT 1 FROM project_imports i WHERE i.need_id=n.id) AND NOT EXISTS (SELECT 1 FROM development_records d WHERE d.need_id=n.id AND d.need_version=n.version AND d.verification_id=n.verification_id AND d.state!='unverified')", rulesVersion, now.Unix()).Scan(&count)
 	return count, e
 }
+
+const projectCountSQL = `(SELECT count(DISTINCT i.need_id) FROM project_imports i JOIN research_batches b ON b.id=i.batch_row WHERE b.task_id=research_tasks.id)`
+
 func recomputeTasks(tx *sql.Tx, now time.Time) error {
 	count, e := qualifiedCount(tx, now)
 	if e != nil {
 		return e
 	}
-	_, e = tx.Exec(`UPDATE research_tasks SET state=CASE WHEN target_count<=? THEN 'target_reached' ELSE 'active' END,version=version+1,updated_at=? WHERE is_current=1 AND state IN ('active','target_reached') AND state!=CASE WHEN target_count<=? THEN 'target_reached' ELSE 'active' END`, count, now.Unix(), count)
+	_, e = tx.Exec(`UPDATE research_tasks SET state=CASE WHEN target_count<=? THEN 'target_reached' ELSE 'active' END,version=version+1,updated_at=? WHERE coalesce(json_extract(rules,'$.decision_mode'),'')!='agent_project' AND is_current=1 AND state IN ('active','target_reached') AND state!=CASE WHEN target_count<=? THEN 'target_reached' ELSE 'active' END`, count, now.Unix(), count)
 	if e != nil {
 		return e
 	}
-	_, e = tx.Exec("UPDATE research_tasks SET state='target_reached',version=version+1,updated_at=? WHERE is_current=1 AND state='waiting_for_signals' AND target_count<=?", now.Unix(), count)
+	_, e = tx.Exec("UPDATE research_tasks SET state='target_reached',version=version+1,updated_at=? WHERE coalesce(json_extract(rules,'$.decision_mode'),'')!='agent_project' AND is_current=1 AND state='waiting_for_signals' AND target_count<=?", now.Unix(), count)
+	if e != nil {
+		return e
+	}
+	_, e = tx.Exec("UPDATE research_tasks SET state=CASE WHEN target_count<="+projectCountSQL+" THEN 'target_reached' ELSE 'active' END,version=version+1,updated_at=? WHERE json_extract(rules,'$.decision_mode')='agent_project' AND is_current=1 AND (state IN ('active','target_reached') OR state='waiting_for_signals' AND target_count<="+projectCountSQL+") AND state!=CASE WHEN target_count<="+projectCountSQL+" THEN 'target_reached' ELSE 'active' END", now.Unix())
 	return e
 }
 func hydrateTask(tx *sql.Tx, t *Task, now time.Time) error {
@@ -27,9 +34,14 @@ func hydrateTask(tx *sql.Tx, t *Task, now time.Time) error {
 	if e != nil {
 		return e
 	}
+	if projectTask(t) {
+		if e = tx.QueryRow("SELECT "+projectCountSQL+" FROM research_tasks WHERE id=?", t.ID).Scan(&n); e != nil {
+			return e
+		}
+	}
 	t.QualifiedCount = n
 	t.RemainingGap = max(0, t.TargetCount-n)
-	t.ShouldContinue = t.Current && t.State == "active"
+	t.ShouldContinue = t.Current && t.State == "active" && t.RemainingGap > 0
 	return nil
 }
 func (s *Service) Maintenance(now time.Time) error {

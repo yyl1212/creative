@@ -8,7 +8,63 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestProjectAPIImportsApprovedPackage(t *testing.T) {
+	b, _ := setupResearch(t)
+	p, secret, err := b.app.Auth.CreateProducer("project-agent", "owner", "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := b.app.research.CreateProjectTask(p.ID, []string{"test"}, []string{"en"}, 1, "owner", "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := apiRequest(b.app, "GET", "catalog", "", nil); w.Code != 401 {
+		t.Fatal(w.Code)
+	}
+	w := apiRequest(b.app, "GET", "catalog", secret, nil)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var catalog struct {
+		Revision string `json:"revision"`
+	}
+	if err = json.Unmarshal(w.Body.Bytes(), &catalog); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile("../research/testdata/project.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v map[string]any
+	_ = json.Unmarshal(raw, &v)
+	v["task_id"] = task.ID
+	q := v["project"].(map[string]any)
+	q["catalog_revision"] = catalog.Revision
+	q["reviewed_at"] = time.Now().UTC().Format(time.RFC3339)
+	for _, item := range v["candidates"].([]any)[0].(map[string]any)["evidence"].([]any) {
+		e := item.(map[string]any)
+		e["published_at"] = time.Now().AddDate(0, -1, 0).UTC().Format(time.RFC3339)
+		e["observed_at"] = time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
+	}
+	raw, _ = json.Marshal(v)
+	w = apiRequest(b.app, "POST", "projects", secret, raw)
+	if w.Code != 202 || !strings.Contains(w.Body.String(), `"development_state":"approved"`) {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if w = apiRequest(b.app, "GET", "batches/project-example-001", secret, nil); w.Code != 200 || !strings.Contains(w.Body.String(), `"status":"completed"`) {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if w = apiRequest(b.app, "GET", "projects", secret, nil); w.Code != 405 || w.Header().Get("Allow") != "POST" {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	b.login(t)
+	if w = b.request("GET", "/admin/needs/1", nil, nil); w.Code != 200 || !strings.Contains(w.Body.String(), "外部模型判断") || strings.Contains(w.Body.String(), `action="/admin/needs/1/approve"`) {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}
 
 func setupResearch(t *testing.T) (*browser, Config) {
 	t.Helper()
