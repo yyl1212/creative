@@ -33,6 +33,7 @@ type EvidenceDecision struct {
 	Fingerprint string `json:"fingerprint"`
 }
 type Decision struct {
+	Agent           *AgentReview       `json:"agent_review,omitempty"`
 	Outcome         string             `json:"outcome"`
 	Reasons         []string           `json:"reasons"`
 	Evidence        []EvidenceDecision `json:"evidence"`

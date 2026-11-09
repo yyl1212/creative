@@ -75,7 +75,14 @@ func (a *App) serveResearch(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, 200, map[string]any{"task": task})
-	case path == "batches" && r.Method == http.MethodPost:
+	case path == "catalog" && r.Method == http.MethodGet:
+		catalog, err := a.research.ProjectCatalog(producer)
+		if err != nil {
+			researchError(w, err)
+			return
+		}
+		writeJSON(w, 200, catalog)
+	case (path == "batches" || path == "projects") && r.Method == http.MethodPost:
 		media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 		if err != nil || media != "application/json" {
 			researchError(w, &research.Error{Status: 422, Code: "invalid_content_type", Field: "/", Message: "请使用 application/json"})
@@ -95,7 +102,12 @@ func (a *App) serveResearch(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		reception, err := a.research.Receive(producer, raw)
+		var reception []byte
+		if path == "projects" {
+			reception, err = a.research.ImportProject(producer, raw)
+		} else {
+			reception, err = a.research.Receive(producer, raw)
+		}
 		if err != nil {
 			researchError(w, err)
 			return
@@ -123,9 +135,9 @@ func (a *App) serveResearch(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, 200, receipt)
-	case path == "task" || path == "batches" || strings.HasPrefix(path, "batches/"):
+	case path == "task" || path == "catalog" || path == "projects" || path == "batches" || strings.HasPrefix(path, "batches/"):
 		allow := "GET"
-		if path == "batches" {
+		if path == "batches" || path == "projects" {
 			allow = "POST"
 		}
 		w.Header().Set("Allow", allow)

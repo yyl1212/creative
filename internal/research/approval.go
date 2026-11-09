@@ -46,7 +46,7 @@ type Approval struct {
 }
 
 var decimalPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)(\.[0-9]+)?$`)
-var secretPattern = regexp.MustCompile(`(?i)(sk-[a-z0-9_-]{12,}|cr_[a-z0-9_-]{16,}|bearer[ ]+[a-z0-9._-]{12,}|-----BEGIN[ A-Z]*PRIVATE KEY|(?:api[_-]?key|password|secret|token)[ ]*[:=][ ]*[^\s",}]+)`)
+var secretPattern = regexp.MustCompile(`(?i)(\bsk-[a-z0-9_-]{12,}|cr_[a-z0-9_-]{16,}|bearer[ ]+[a-z0-9._-]{12,}|-----BEGIN[ A-Z]*PRIVATE KEY|(?:api[_-]?key|password|secret|token)[ ]*[:=][ ]*[^\s",}]+)`)
 var commitPattern = regexp.MustCompile(`^[a-f0-9]{40}$`)
 
 func lifecycleInput(message string) error {
@@ -209,6 +209,22 @@ func currentEvidence(tx *sql.Tx, id, version, verification int, allowCompleted b
 	for _, b := range n.Sources {
 		sources[b.ID] = b
 	}
+	if n.Decision.Agent != nil {
+		var imported int
+		if e = tx.QueryRow("SELECT count(*) FROM project_imports WHERE need_id=? AND verification_id=?", id, verification).Scan(&imported); e != nil {
+			return n, e
+		}
+		if imported != 1 || len(n.Sources) != len(n.Decision.Evidence) {
+			return n, fail(409, "evidence_missing", "/need", "外部立项记录或证据不完整")
+		}
+		for _, ev := range n.Decision.Evidence {
+			b, ok := sources[ev.ID]
+			if !ok || b.Block.Text == "" || b.Document.URL == "" {
+				return n, fail(409, "evidence_missing", "/need", "外部来源摘要缺失")
+			}
+		}
+		return n, nil
+	}
 	users, sites := map[string]bool{}, map[string]bool{}
 	payment, priced := map[string]bool{}, 0
 	now := time.Now()
@@ -258,6 +274,9 @@ func (s *Service) ApproveNeed(id, version int, a Approval, actor, source string)
 	n, e := currentQualified(tx, id, version, a.VerificationID)
 	if e != nil {
 		return e
+	}
+	if n.Decision.Agent != nil {
+		return fail(409, "project_already_approved", "/need", "外部项目已立项，请通过立项包复核接口更新")
 	}
 	reviewed := map[string]bool{}
 	for _, v := range a.ReviewedEvidence {

@@ -122,6 +122,12 @@ func (s *Service) Tasks() ([]Task, error) {
 	return tasks, tx.Commit()
 }
 func (s *Service) CreateTask(producer string, topics, languages []string, target int, actor, source string) (*Task, error) {
+	return s.createTask(producer, topics, languages, target, actor, source, false)
+}
+func (s *Service) CreateProjectTask(producer string, topics, languages []string, target int, actor, source string) (*Task, error) {
+	return s.createTask(producer, topics, languages, target, actor, source, true)
+}
+func (s *Service) createTask(producer string, topics, languages []string, target int, actor, source string, project bool) (*Task, error) {
 	if target < 1 || target > 2147483647 || len(topics) == 0 || len(topics) > 20 || len(languages) == 0 || len(languages) > 2 {
 		return nil, fail(422, "invalid_task", "/", "请填写主题、语言和正整数目标")
 	}
@@ -162,7 +168,15 @@ func (s *Service) CreateTask(producer string, topics, languages []string, target
 		return nil, err
 	}
 	id := "task-" + rand.Text()
-	if _, err = tx.Exec("INSERT INTO research_tasks(id,producer_id,topics,languages,target_count,rules_version,rules,state) VALUES (?,?,?,?,?,?,?,'active')", id, producer, string(topicJSON), string(languageJSON), target, rulesVersion, rulesJSON); err != nil {
+	rules := rulesJSON
+	if project {
+		var value map[string]any
+		_ = json.Unmarshal([]byte(rules), &value)
+		value["decision_mode"] = "agent_project"
+		value["requirements"].([]any)[5] = "外部模型完成全部证据、去重和立项判断；网站只校验契约并导入已立项项目"
+		rules = jsonText(value)
+	}
+	if _, err = tx.Exec("INSERT INTO research_tasks(id,producer_id,topics,languages,target_count,rules_version,rules,state) VALUES (?,?,?,?,?,?,?,'active')", id, producer, string(topicJSON), string(languageJSON), target, rulesVersion, rules); err != nil {
 		return nil, err
 	}
 	if _, err = tx.Exec("INSERT INTO audit_events(action,account,source,object_id,details) VALUES ('task_created',?,?,?,?)", actor, source, id, `{"before":null,"after":"active","version":1}`); err != nil {
