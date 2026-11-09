@@ -1,0 +1,13 @@
+---
+import { copy, type Locale } from '../lib/i18n';
+interface Props { lang: Locale; }
+const c = copy[Astro.props.lang];
+---
+<div class="empty-catalog">
+  <div class="empty-symbol" aria-hidden="true">
+    <svg width="30" height="30" viewBox="0 0 30 30" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><rect x="5" y="5" width="8" height="8" rx="2" /><rect x="17" y="5" width="8" height="8" rx="2" /><rect x="5" y="17" width="8" height="8" rx="2" /><path d="M21 17v8m-4-4h8" stroke-linecap="round" /></svg>
+  </div>
+  <h2>{c.empty}</h2>
+  <p>{c.preparing}</p>
+  <span class="status-label"><span class="status-dot" aria-hidden="true"></span>{c.status}</span>
+</div>

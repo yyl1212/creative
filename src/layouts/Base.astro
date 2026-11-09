@@ -11,18 +11,43 @@ const canonical = new URL(root ? '/' : `/${lang}/${path}`, config.siteURL).href;
 ---
 <!doctype html>
 <html lang={lang}>
-<head>
-<meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>{title} · Creative</title><meta name="description" content={c.tagline} />
-{noindex ? <meta name="robots" content="noindex, follow" /> : <><link rel="canonical" href={canonical} /><link rel="alternate" hreflang="zh" href={`${config.siteURL}/zh/${path}`} /><link rel="alternate" hreflang="en" href={`${config.siteURL}/en/${path}`} /><link rel="alternate" hreflang="x-default" href={`${config.siteURL}/`} /></>}
-<meta name="theme-color" content="#f6f7f3" />
-</head>
-<body>
-<a class="skip" href="#main">{c.skip}</a>
-<header class="site-header wrap">
-<a class="brand" href={`/${lang}/`} aria-label="Creative"><span class="brand-mark" aria-hidden="true">c<span>.</span></span><span>creative</span></a>
-<nav aria-label={lang === 'zh' ? '主导航' : 'Main navigation'}><a aria-current={path === 'tools/' ? 'page' : undefined} href={`/${lang}/tools/`}>{c.tools}</a><a aria-current={path === 'about/' ? 'page' : undefined} href={`/${lang}/about/`}>{c.about}</a><a class="language" lang={alternate} href={`/${alternate}/${path}`}>{lang === 'zh' ? 'EN' : '中文'} <span aria-hidden="true">↗</span></a></nav>
-</header>
-<main id="main" class="wrap" tabindex="-1"><slot config={config} /></main>
-<footer class="site-footer wrap"><div><a class="wordmark" href={`/${lang}/`}>creative<span>.</span></a><p>{c.footer}</p></div><nav aria-label={lang === 'zh' ? '页脚导航' : 'Footer navigation'}><a href={`/${lang}/privacy/`}>{c.privacy}</a><a href={`/${lang}/feedback/`}>{c.feedback}</a>{config.adminURL && <a href={config.adminURL}>{c.admin}</a>}</nav><small>© {new Date().getUTCFullYear()} Creative</small></footer>
-</body></html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title} · Creative</title>
+    <meta name="description" content={c.tagline} />
+    {noindex ? <meta name="robots" content="noindex, follow" /> : <>
+      <link rel="canonical" href={canonical} />
+      <link rel="alternate" hreflang="zh" href={`${config.siteURL}/zh/${path}`} />
+      <link rel="alternate" hreflang="en" href={`${config.siteURL}/en/${path}`} />
+      <link rel="alternate" hreflang="x-default" href={`${config.siteURL}/`} />
+    </>}
+    <meta name="theme-color" content="#ffffff" />
+  </head>
+  <body>
+    <a class="skip" href="#main">{c.skip}</a>
+    <header class="site-header">
+      <div class="header-inner wrap">
+        <a class="brand" href={`/${lang}/`} aria-label="Creative">
+          <svg class="brand-icon" width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><rect width="30" height="30" rx="8" fill="currentColor" /><path d="M20 10a7 7 0 1 0 0 10" fill="none" stroke="white" stroke-width="2.6" stroke-linecap="round" /></svg>
+          <span>Creative</span>
+        </a>
+        <nav class="main-nav" aria-label={lang === 'zh' ? '主导航' : 'Main navigation'}>
+          <a aria-current={path === 'tools/' ? 'page' : undefined} href={`/${lang}/tools/`}>{c.tools}</a>
+          <a aria-current={path === 'about/' ? 'page' : undefined} href={`/${lang}/about/`}>{c.about}</a>
+        </nav>
+        <a class="language" lang={alternate} href={`/${alternate}/${path}`} aria-label={lang === 'zh' ? 'Switch to English' : '切换为中文'}>{lang === 'zh' ? 'EN' : '中文'}</a>
+      </div>
+    </header>
+    <main id="main" class="wrap" tabindex="-1"><slot /></main>
+    <footer class="site-footer wrap">
+      <div class="footer-copy"><span class="footer-brand">Creative</span><span>{c.footer}</span></div>
+      <nav aria-label={lang === 'zh' ? '页脚导航' : 'Footer navigation'}>
+        <a href={`/${lang}/privacy/`}>{c.privacy}</a>
+        <a href={`/${lang}/feedback/`}>{c.feedback}</a>
+        {config.adminURL && <a href={config.adminURL}>{c.admin}</a>}
+      </nav>
+      <small>© {new Date().getUTCFullYear()} Creative</small>
+    </footer>
+  </body>
+</html>
