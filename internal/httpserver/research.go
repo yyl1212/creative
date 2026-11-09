@@ -69,7 +69,7 @@ func (a *App) serveResearch(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/research/v1/")
 	switch {
 	case path == "task" && r.Method == http.MethodGet:
-		task, err := a.research.CurrentTask(producer.ID)
+		task, err := a.research.CurrentTask(producer)
 		if err != nil {
 			researchError(w, err)
 			return
@@ -117,13 +117,13 @@ func (a *App) serveResearch(w http.ResponseWriter, r *http.Request) {
 			researchError(w, &research.Error{Status: 404, Code: "batch_not_found", Field: "/batch_id", Message: "回执不存在"})
 			return
 		}
-		receipt, err := a.research.Receipt(producer.ID, id)
+		receipt, err := a.research.Receipt(producer, id)
 		if err != nil {
 			researchError(w, err)
 			return
 		}
 		writeJSON(w, 200, receipt)
-	case path == "task" || path == "batches":
+	case path == "task" || path == "batches" || strings.HasPrefix(path, "batches/"):
 		allow := "GET"
 		if path == "batches" {
 			allow = "POST"

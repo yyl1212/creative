@@ -121,6 +121,10 @@ func TestBatchIdempotencyCancellationAndRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	other, _, err := a.CreateProducer("other", "owner", "local")
+	if err != nil {
+		t.Fatal(err)
+	}
 	s, err := New(db)
 	if err != nil {
 		t.Fatal(err)
@@ -167,7 +171,7 @@ func TestBatchIdempotencyCancellationAndRestart(t *testing.T) {
 	_, err = s.Receive(p, fresh)
 	code(t, err, 409)
 	for i := 0; i < 2; i++ {
-		current, e := s.CurrentTask(p.ID)
+		current, e := s.CurrentTask(p)
 		if e != nil || current.State != "cancelled" || current.ShouldContinue {
 			t.Fatal("read restored cancelled task", e)
 		}
@@ -193,7 +197,7 @@ func TestBatchIdempotencyCancellationAndRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := s.Receipt(p.ID, "batch-example-001")
+	got, err := s.Receipt(p, "batch-example-001")
 	if err != nil || got.Status != "pending_validation" || got.QualifiedCount != 0 || got.RemainingGap != 3 || len(got.Results) != 1 {
 		t.Fatalf("restart receipt: %+v %v", got, err)
 	}
@@ -201,7 +205,7 @@ func TestBatchIdempotencyCancellationAndRestart(t *testing.T) {
 	if err = db.QueryRow("SELECT payload FROM research_batches WHERE batch_id='batch-example-001'").Scan(&persisted); err != nil || !bytes.Equal(persisted, raw) {
 		t.Fatal("raw bytes changed", err)
 	}
-	_, err = s.Receipt("another-producer", "batch-example-001")
+	_, err = s.Receipt(other, "batch-example-001")
 	code(t, err, 404)
 	if _, err = db.Exec("UPDATE producers SET token_hash=NULL,version=version+1 WHERE id=?", p.ID); err != nil {
 		t.Fatal(err)

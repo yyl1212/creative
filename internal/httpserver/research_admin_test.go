@@ -45,7 +45,7 @@ func TestResearchAdminWorkflow(t *testing.T) {
 	if w.Code != 303 {
 		t.Fatal("create task", w.Code, w.Body.String())
 	}
-	task, e := b.app.research.CurrentTask(p.ID)
+	task, e := b.app.research.CurrentTask(p)
 	if e != nil || task == nil {
 		t.Fatal("task missing", e)
 	}
@@ -70,7 +70,7 @@ func TestResearchAdminWorkflow(t *testing.T) {
 	if w = b.request("POST", "/admin/tasks/"+task.ID+"/resume", values, nil); w.Code != 409 {
 		t.Fatal("stale state accepted", w.Code)
 	}
-	task, e = b.app.research.CurrentTask(p.ID)
+	task, e = b.app.research.CurrentTask(p)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -143,5 +143,34 @@ func TestAdminBatchesPaginationAndInvalidForms(t *testing.T) {
 	w = b.request("GET", "/admin/batches?before=2", nil, nil)
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "page-001") || strings.Contains(w.Body.String(), "page-002") {
 		t.Fatal("second page boundary")
+	}
+}
+
+func TestTaskCardsIdentifyProducers(t *testing.T) {
+	b, _ := setupResearch(t)
+	b.login(t)
+	for _, name := range []string{"中文执行端", "English agent"} {
+		p, _, e := b.app.Auth.CreateProducer(name, "owner", "local")
+		if e != nil {
+			t.Fatal(e)
+		}
+		task, e := b.app.research.CreateTask(p.ID, []string{"相同主题"}, []string{"zh"}, 3, "owner", "local")
+		if e != nil {
+			t.Fatal(e)
+		}
+		page := b.request("GET", "/admin/tasks", nil, nil)
+		cards := regexp.MustCompile(`(?s)<article class="list-item">.*?</article>`).FindAllString(page.Body.String(), -1)
+		found := false
+		for _, card := range cards {
+			if strings.Contains(card, task.ID) {
+				found = true
+				if !strings.Contains(card, name) {
+					t.Fatalf("task %s does not identify its producer", task.ID)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("task card missing")
+		}
 	}
 }

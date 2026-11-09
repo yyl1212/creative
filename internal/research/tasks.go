@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/yyl1212/creative/internal/auth"
 	"strings"
 	"time"
 	"unicode"
@@ -17,6 +18,7 @@ const rulesJSON = `{"independent_users_min":3,"original_sites_min":2,"direct_pay
 type Task struct {
 	ID              string          `json:"task_id"`
 	ProducerID      string          `json:"-"`
+	ProducerName    string          `json:"-"`
 	Topics          []string        `json:"topics"`
 	Languages       []string        `json:"languages"`
 	TargetCount     int             `json:"target_count"`
@@ -32,13 +34,13 @@ type Task struct {
 	Current         bool            `json:"-"`
 }
 
-const taskColumns = "id,producer_id,topics,languages,target_count,rules_version,rules,state,is_current,version,updated_at"
+const taskColumns = "id,producer_id,topics,languages,target_count,rules_version,rules,state,is_current,version,updated_at,(SELECT p.name FROM producers p WHERE p.id=research_tasks.producer_id)"
 
 func scanTask(row interface{ Scan(...any) error }) (*Task, error) {
 	var t Task
 	var topics, languages, rules string
 	var updated int64
-	if err := row.Scan(&t.ID, &t.ProducerID, &topics, &languages, &t.TargetCount, &t.RulesVersion, &rules, &t.State, &t.Current, &t.Version, &updated); err != nil {
+	if err := row.Scan(&t.ID, &t.ProducerID, &topics, &languages, &t.TargetCount, &t.RulesVersion, &rules, &t.State, &t.Current, &t.Version, &updated, &t.ProducerName); err != nil {
 		return nil, err
 	}
 	if err := json.Unmarshal([]byte(topics), &t.Topics); err != nil {
@@ -62,12 +64,23 @@ func scanTask(row interface{ Scan(...any) error }) (*Task, error) {
 	}
 	return &t, nil
 }
-func (s *Service) CurrentTask(producer string) (*Task, error) {
-	t, err := scanTask(s.db.QueryRow("SELECT "+taskColumns+" FROM research_tasks WHERE producer_id=? AND is_current=1", producer))
+func (s *Service) CurrentTask(producer auth.Producer) (*Task, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if err = verifyProducer(tx, producer); err != nil {
+		return nil, err
+	}
+	t, err := scanTask(tx.QueryRow("SELECT "+taskColumns+" FROM research_tasks WHERE producer_id=? AND is_current=1", producer.ID))
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
-	return t, err
+	if err != nil {
+		return nil, err
+	}
+	return t, tx.Commit()
 }
 func (s *Service) Tasks() ([]Task, error) {
 	rows, err := s.db.Query("SELECT " + taskColumns + " FROM research_tasks WHERE is_current=1 ORDER BY created_at DESC,id")

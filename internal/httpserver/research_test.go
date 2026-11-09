@@ -171,3 +171,49 @@ func TestResearchHostConfiguration(t *testing.T) {
 		t.Fatal("API host renders admin", w.Code)
 	}
 }
+
+func TestProducerRevocationDuringRead(t *testing.T) {
+	for _, mutation := range []string{"token_hash=NULL,version=version+1", "token_hash='rotated-test-digest',version=version+1"} {
+		for _, path := range []string{"task", "batches/batch-example-001"} {
+			t.Run(path+mutation, func(t *testing.T) {
+				b, _ := setupResearch(t)
+				p, secret, e := b.app.Auth.CreateProducer("race", "owner", "local")
+				if e != nil {
+					t.Fatal(e)
+				}
+				task, e := b.app.research.CreateTask(p.ID, []string{"private research"}, []string{"en"}, 3, "owner", "local")
+				if e != nil {
+					t.Fatal(e)
+				}
+				if _, e = b.app.research.Receive(p, httpFixture(t, task.ID)); e != nil {
+					t.Fatal(e)
+				}
+				// 在首次认证后、读取资源前失效令牌，复现真实轮换/撤销竞争。
+				if _, e = b.app.db.Exec("CREATE TRIGGER revoke_between_auth_and_read AFTER INSERT ON research_rate_limits BEGIN UPDATE producers SET " + mutation + " WHERE id=NEW.producer_id; END"); e != nil {
+					t.Fatal(e)
+				}
+				w := apiRequest(b.app, "GET", path, secret, nil)
+				if w.Code != 401 {
+					t.Fatalf("invalidated credential can read %s: status=%d", path, w.Code)
+				}
+				if strings.Contains(w.Body.String(), task.ID) || strings.Contains(w.Body.String(), "need-example-001") {
+					t.Fatal("revocation response disclosed resource")
+				}
+			})
+		}
+	}
+}
+
+func TestReceiptMethodContract(t *testing.T) {
+	b, _ := setupResearch(t)
+	_, secret, e := b.app.Auth.CreateProducer("method", "owner", "local")
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, method := range []string{"POST", "DELETE", "PUT"} {
+		w := apiRequest(b.app, method, "batches/existing-or-missing", secret, nil)
+		if w.Code != 405 || w.Header().Get("Allow") != "GET" {
+			t.Fatalf("%s receipt method=%d allow=%q", method, w.Code, w.Header().Get("Allow"))
+		}
+	}
+}

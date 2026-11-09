@@ -220,12 +220,8 @@ func (s *Service) Receive(p auth.Producer, raw []byte) ([]byte, error) {
 		return nil, err
 	}
 	defer tx.Rollback()
-	var enabled int
-	if err = tx.QueryRow("SELECT count(*) FROM producers WHERE id=? AND version=? AND token_hash IS NOT NULL", p.ID, p.Version).Scan(&enabled); err != nil {
+	if err = verifyProducer(tx, p); err != nil {
 		return nil, err
-	}
-	if enabled != 1 {
-		return nil, fail(401, "invalid_token", "/", "令牌已撤销或轮换")
 	}
 	var previousHash string
 	var reception []byte
@@ -292,7 +288,7 @@ type Receipt struct {
 	ShouldContinue bool     `json:"should_continue"`
 }
 
-func (s *Service) Receipt(producer, batchID string) (Receipt, error) {
+func (s *Service) Receipt(producer auth.Producer, batchID string) (Receipt, error) {
 	var receipt Receipt
 	var taskID string
 	var rowID int
@@ -301,7 +297,10 @@ func (s *Service) Receipt(producer, batchID string) (Receipt, error) {
 		return receipt, err
 	}
 	defer tx.Rollback()
-	err = tx.QueryRow("SELECT id,batch_id,status,task_id FROM research_batches WHERE producer_id=? AND batch_id=?", producer, batchID).Scan(&rowID, &receipt.BatchID, &receipt.Status, &taskID)
+	if err = verifyProducer(tx, producer); err != nil {
+		return receipt, err
+	}
+	err = tx.QueryRow("SELECT id,batch_id,status,task_id FROM research_batches WHERE producer_id=? AND batch_id=?", producer.ID, batchID).Scan(&rowID, &receipt.BatchID, &receipt.Status, &taskID)
 	if err == sql.ErrNoRows {
 		return receipt, fail(404, "batch_not_found", "/batch_id", "回执不存在")
 	}
@@ -336,4 +335,16 @@ func (s *Service) Receipt(producer, batchID string) (Receipt, error) {
 		return receipt, err
 	}
 	return receipt, tx.Commit()
+}
+
+// 凭据版本与受保护数据共用事务，避免撤销后读到新产生的资料。
+func verifyProducer(tx *sql.Tx, p auth.Producer) error {
+	var enabled int
+	if err := tx.QueryRow("SELECT count(*) FROM producers WHERE id=? AND version=? AND token_hash IS NOT NULL", p.ID, p.Version).Scan(&enabled); err != nil {
+		return err
+	}
+	if enabled != 1 {
+		return fail(401, "invalid_token", "/", "令牌已撤销或轮换")
+	}
+	return nil
 }

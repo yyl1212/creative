@@ -8,7 +8,7 @@
 
 追加 002 迁移，不改 001；迁移程序按顺序核对全部历史校验和，未知/缺号版本拒绝启动。升级前一致性备份，回退旧程序需恢复升级前备份，不能删除数据或把 002 数据库交给旧程序。
 
-Schema 首次固化而非修改已上线协议：所有对象拒绝未知字段；必填项允许 null 的范围与 v1 一致。替代方案属性细化为 name/url/checked_at/method/limitations/basis；method 为 research_only/hands_on。ID 为 1–128 位字母数字、下划线或连字符；字符/数组长度限制保护输入资源，不限制总搜寻数量。Schema 使用 jsonschema/v6 的离线编译器，固定版本；不自行实现 JSON Schema。模型费用只接受 OpenAI/DeepSeek，非模型服务的 model 为 null。费用原样保存在包内，核对属于迭代 3。
+Schema 首次固化而非修改已上线协议：所有对象拒绝未知字段；必填项允许 null 的范围与 v1 一致。替代方案属性细化为 name/url/checked_at/method/limitations/basis；method 为 research_only/hands_on。ID 为 1–128 位字母数字、下划线或连字符；字符/数组长度限制保护输入资源，不限制总搜寻数量。Schema 使用 [jsonschema/v6](https://github.com/santhosh-tekuri/jsonschema) 的离线编译器，固定 v6.0.3；不自行实现 JSON Schema。模型费用只接受 OpenAI/DeepSeek，非模型服务的 model 为 null。费用原样保存在包内，核对属于迭代 3。
 
 任务每个执行端同时一个当前任务。当前任务取消后可新建；新建替代旧任务后旧任务不可恢复，以免同一执行端有两个当前任务。管理员操作带版本，状态和审计同事务提交。执行端撤销立即失去访问权；轮换替换摘要，旧 token 立即失效。令牌只在创建/轮换 POST 响应显示一次，不写 URL、日志、数据库明文或公开产物。
 
