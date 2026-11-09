@@ -3,6 +3,7 @@
 import argparse
 import base64
 import hashlib
+import http.client
 import json
 import os
 from pathlib import Path
@@ -78,6 +79,16 @@ def save(path, value, exclusive=False):
             os.unlink(name)
 
 
+def receipt_status(result, batch_id):
+    if not isinstance(result, dict) or result.get("http_status") not in (200, 202):
+        raise TransportError("receipt_corrupt")
+    payload = result.get("payload")
+    if (not isinstance(payload, dict) or payload.get("batch_id") != batch_id
+            or payload.get("status") not in ("pending_validation", "validating", "paused_service", "completed")):
+        raise TransportError("receipt_corrupt")
+    return payload["status"]
+
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -133,7 +144,7 @@ class Transport:
                 return json.loads(json.dumps(result).replace(self.token, "[REDACTED]"))
         except TransportError:
             raise
-        except (OSError, ValueError, urllib.error.URLError):
+        except (OSError, ValueError, urllib.error.URLError, http.client.HTTPException):
             raise TransportError("transport_unavailable_outcome_unknown") from None
 
     def task(self):
@@ -182,18 +193,14 @@ class Transport:
             status = "unconfirmed"
             if receipt.exists() or receipt.is_symlink():
                 stored = decode(private_read(receipt))
-                if not isinstance(stored, dict) or not isinstance(stored.get("payload"), dict):
-                    raise TransportError("receipt_corrupt")
-                status = stored["payload"].get("status", "unconfirmed")
+                status = receipt_status(stored, ident)
             result.append({"batch_id": ident, "task_id": obj["task_id"], "rules_version": obj["rules_version"],
                            "sha256": hashlib.sha256(raw).hexdigest(), "status": status})
         return result
 
     def _remember(self, batch_id, result):
         if result["http_status"] in (200, 202):
-            payload = result["payload"]
-            if not isinstance(payload, dict) or payload.get("batch_id") != batch_id:
-                raise TransportError("receipt_identity_mismatch")
+            receipt_status(result, batch_id)
             save(self.root / (batch_id + ".receipt.json"), result)
         return result
 

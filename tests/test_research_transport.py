@@ -33,6 +33,7 @@ class TransportTests(unittest.TestCase):
         self.root = Path(self.tmp.name).resolve()
         self.requests, self.accepted = [], None
         self.lose_response, self.redirect, self.throttle = False, False, False
+        self.broken_response = None
         self.task = {"task_id": "fixture-task", "rules_version": "strong-wtp.v1",
                      "state": "active", "should_continue": True}
         case = self
@@ -50,6 +51,14 @@ class TransportTests(unittest.TestCase):
             def handle_request(self):
                 body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
                 case.requests.append((self.command, self.path, body, self.headers.get("Authorization")))
+                if case.broken_response == "status":
+                    self.wfile.write(("invalid " + case.settings["token"] + "\r\n\r\n").encode())
+                    self.close_connection = True
+                    return
+                if case.broken_response == "truncated":
+                    self.wfile.write(b'HTTP/1.1 200 OK\r\nContent-Length: 200\r\n\r\n{"task":')
+                    self.close_connection = True
+                    return
                 code, result = 200, {}
                 if case.redirect:
                     self.send_response(307)
@@ -233,6 +242,38 @@ class TransportTests(unittest.TestCase):
                                 capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn(self.settings["token"], result.stdout + result.stderr)
+
+    def test_protocol_errors_never_expose_credential_or_traceback(self):
+        self.client.stage(self.payload)
+        saved = self.root / "state" / "fixture-batch.batch.json"
+        before = saved.read_bytes()
+        for kind in ["status", "truncated"]:
+            with self.subTest(response=kind):
+                self.broken_response = kind
+                result = subprocess.run([sys.executable, str(SCRIPT), "--binding", str(self.binding), "task"],
+                                        capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 1)
+                self.assertNotIn(self.settings["token"], result.stdout + result.stderr)
+                self.assertNotIn("Traceback", result.stdout + result.stderr)
+                self.assertIn(json.loads(result.stderr)["error"],
+                              ("transport_unavailable_outcome_unknown", "invalid_json"))
+                self.assertEqual(saved.read_bytes(), before)
+
+    def test_mismatched_or_invalid_receipt_fails_closed_on_recovery(self):
+        self.client.stage(self.payload)
+        path = self.root / "state" / "fixture-batch.receipt.json"
+        valid = {"http_status": 200, "payload": {"batch_id": "fixture-batch", "status": "completed"}}
+        invalid = [dict(valid, payload={"batch_id": "other-batch", "status": "completed"}),
+                   dict(valid, http_status=500), dict(valid, payload={"status": "completed"}),
+                   dict(valid, payload={"batch_id": "fixture-batch", "status": "invented"}),
+                   dict(valid, payload={"batch_id": "fixture-batch"})]
+        for receipt in invalid:
+            with self.subTest(receipt=receipt):
+                path.write_text(json.dumps(receipt))
+                path.chmod(0o600)
+                with self.assertRaises(self.module.TransportError):
+                    self.client.outbox()
+        self.assertEqual(self.requests, [])
 
     def test_invalid_duplicate_json_and_oversized_payload_never_staged(self):
         for raw in [b'{"batch_id":"one","batch_id":"two"}', b'{}', b'x' * (1024 * 1024 + 1)]:
