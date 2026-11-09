@@ -1,6 +1,6 @@
 # Creative
 
-从真实需求出发的工具平台。当前已实现迭代 1 的代码（浏览器完整验收待补齐）：中英双语用户空站、独立 Go 管理入口、私有管理员初始化与持久化会话。产品清单为 `[]`，需求库初始为空。未接入模型、研究接口、广告、支付、收入或访问统计。
+从真实需求出发的工具平台。当前已实现双语空站、安全管理登录，以及迭代 2 的研究任务、执行端令牌、候选接收与回执。产品清单为 `[]`，需求库初始为空；收到候选后仍须等待迭代 3 的原文核验，不计入合格或已完成需求。未接入真实搜寻、模型调用、广告、支付、收入或访问统计。
 
 迭代 0 已完成主线/环境准备和定时平台隔离试验；本机定时任务的 HTTP 网络权限未通过，跨次恢复和串行验证仍阻塞，不能启用真实搜寻。详见 [定时任务运行记录](docs/research-task-operations.md)。
 
@@ -48,6 +48,7 @@ CGO_ENABLED=0 go run ./cmd/creative-admin migrate
 | `FEEDBACK_EMAIL` | 未配置时说明反馈尚未开放，不显示表单或虚构邮箱 |
 | `CREATIVE_DB` | `data/creative.db`；私有 SQLite，文件权限 0600，自动创建的目录 0700 |
 | `CREATIVE_ADMIN_ORIGIN` | `http://localhost:8080`；严格校验管理 Host 与写请求 Origin；非本机只允许 HTTPS |
+| `CREATIVE_RESEARCH_ORIGIN` | 默认空，关闭机器接口；本地可用 `http://127.0.0.1:8080`，必须与管理 Host 不同，非本机须 HTTPS |
 | `CREATIVE_LISTEN` | `127.0.0.1:8080`；默认仅本机监听 |
 | `CREATIVE_CSRF_KEY` | 必填，32 字节密钥的 64 位十六进制表示 |
 | `CREATIVE_PRODUCTS` | `src/data/products.json`；启动时校验并读取，清单改变后重启以刷新总览；缺失/损坏拒绝启动 |
@@ -57,11 +58,27 @@ CGO_ENABLED=0 go run ./cmd/creative-admin migrate
 
 当前总览的需求/合格/完成数量来自 SQLite，产品来自公开清单，不代表生产发布已核验。缺失运营指标显示“未接入 / 未知”。生产代理必须保持原管理 Host、覆盖 X-Real-IP 并限制后台直连；TLS 和代理部署另行验收，本轮未部署。
 
+## 研究任务与候选接收
+
+启动 Go 服务时设置 `CREATIVE_RESEARCH_ORIGIN=http://127.0.0.1:8080`。同一个监听端口按 Host 分流：浏览器使用 `http://localhost:8080/admin/`，执行端使用 `http://127.0.0.1:8080/api/research/v1/`。正式环境请配置独立 admin/API 主机和 HTTPS，代理保留原 Host；不允许拿管理 Cookie 调用机器接口。
+
+1. 管理员进入“执行端”，登记名称并私下保存本次显示的令牌。服务端只保存 SHA-256 摘要；重新生成立即撤销旧令牌。
+2. 进入“搜寻任务”，选择执行端、主题、中文/英文和合格需求目标（默认 3）。每个执行端只有一个当前任务；取消后可恢复，或创建新任务替代旧任务。
+3. 执行端使用 `Authorization: Bearer <私有令牌>` 读取 `GET /api/research/v1/task`。无任务返回 `{"task":null}`；任务携带完整 `strong-wtp.v1` 硬规则及当前状态。
+4. 按 [v1 Schema](schemas/demand-batch.v1.schema.json) 提交 `POST /api/research/v1/batches`，Content-Type 为 application/json；先在执行平台私有工件中保存稳定批次 ID 和准确载荷字节。不要把实际令牌写入命令历史、样例或提示词。
+5. 202 与 `Location`/`receipt_url` 只代表可靠接收。GET 回执当前为 `pending_validation`，逐项 outcome/need_id 为 null，合格数量不增加。到管理“提交批次”查看同一材料。
+
+单包 1 MiB / 20 候选、单执行端 60 请求/分钟和进程 8 个并发是传输保护；返回 429 与 Retry-After 后可以继续，不是总搜寻次数或费用上限。无效 JSON（含重复键）400，身份无效 401，未分配任务/回执 404，冲突/取消/旧规则 409，过大 413，Schema/内容类型错误 422，暂不可用 503。API Host 不符为 421，方法错误为 405。所有错误为 `{"error":{"code":"…","field":"…","message":"…"}}`，不会回显请求内容或内部堆栈。
+
+重试必须保留原始字节（空格也属于内容）；相同身份与批次 ID 返回原接收回执，不同字节为 409。取消后拒绝新批次，仍允许查询及原样重试已入库批次；读取任务不会撤销取消。不同执行端的批次隔离。当前原始包、候选索引、运行费用报告和待验证状态在同一事务保存，重启不丢失；不启动没有事实核验能力的空 worker。
+
+`internal/research/testdata/batch.json` 只有隔离虚构证据，测试全部使用临时库，不得导入真实需求池。替代方案字段使用 name/url/checked_at/method/limitations/basis；模型用量仅接受 OpenAI/DeepSeek 标识，非模型调用使用 model:null，未知费用保持 null，不冒充已核对费用。详见 [本轮子计划](docs/superpowers/plans/2026-11-09-creative-research-intake.md) 与 [验收记录](docs/iteration-02-validation.md)。
+
 ## 数据、迁移与回退
 
-SQLite 使用 WAL、foreign_keys、5 秒 busy_timeout 和单连接。首次启动在事务内执行 `migrations/001_initial.sql` 并登记 SHA-256；已登记 SQL 校验和变化、未知版本会拒绝启动。后续变更必须追加迁移，升级前备份，不修改已执行文件。不要将活动 WAL 数据库只复制 `.db`；停服务并关闭连接后再复制，或使用 SQLite 的一致性备份能力。
+SQLite 使用 WAL、foreign_keys、5 秒 busy_timeout 和单连接。首次启动按顺序执行 `migrations/001_initial.sql`、`002_research.sql` 并登记 SHA-256；原有 001 数据库追加 002 迁移，保留账户、会话、审计和需求；已登记 SQL 校验和变化、未知版本会拒绝启动。后续变更必须追加迁移，升级前备份，不修改已执行文件。不要将活动 WAL 数据库只复制 `.db`；停服务并关闭连接后再复制，或使用 SQLite 的一致性备份能力。
 
-本轮没有生产数据迁移。回退代码前保留完整私有备份；不要通过删除数据库来回退生产数据。`data/`、环境文件、构建产物与开发流水记录均不提交。会话、审计、密码哈希与失败计数也属于私有数据。
+本轮未操作生产数据库。002 增加研究表及审计字段；旧程序会拒绝打开含 002 的库。回退时停服务，恢复升级前的一致性备份并使用旧代码，升级后新增材料须另行保全；不要用降级 SQL 静默丢弃资料。回退代码前保留完整私有备份；不要通过删除数据库来回退生产数据。`data/`、环境文件、构建产物与开发流水记录均不提交。会话、审计、密码哈希与失败计数也属于私有数据。
 
 ## 验证
 
@@ -82,15 +99,17 @@ Node 检查实际构建产物的路由、零产品、双语 SEO、noindex、公�
 
 ```text
 src/                    Astro 用户站、文案、空产品清单、公开配置
-cmd/creative/           Go 管理 HTTP 服务
+cmd/creative/           Go 管理与研究 API 服务
 cmd/creative-admin/     私有管理员与迁移命令
 internal/auth/          密码、账户有效性、限流与审计
 internal/httpserver/    会话、CSRF、管理路由与模板渲染
 internal/store/         SQLite 打开与迁移校验
+internal/research/      任务、Schema 校验、事务接收与回执
+schemas/                内嵌需求批次 v1 JSON Schema
 migrations/             版本化 SQL
 web/admin/              内嵌管理模板与自制 CSS
 tests/                  公开产物检查
 docs/                   中文方案、计划、运维与验收记录
 ```
 
-范围按 [敏捷开发计划](docs/superpowers/plans/2026-11-09-creative-agile-delivery.md) 推进；研究 v1、证据核验、定时任务真实接入和开发交接属于后续迭代。无合格真实需求时不预建业务工具。
+范围按 [敏捷开发计划](docs/superpowers/plans/2026-11-09-creative-agile-delivery.md) 推进；研究 v1 接收已实现；证据核验、定时任务真实接入和开发交接属于后续迭代。无合格真实需求时不预建业务工具。

@@ -51,13 +51,21 @@ type App struct {
 	apiSlots     chan struct{}
 }
 type view struct {
-	CSRF      template.HTML
-	Error     string
-	Username  string
-	Needs     int
-	Qualified int
-	Completed int
-	Products  int
+	CSRF       template.HTML
+	Error      string
+	Username   string
+	Needs      int
+	Qualified  int
+	Completed  int
+	Products   int
+	Page       string
+	Secret     string
+	APIEnabled bool
+	Producers  []auth.Producer
+	Tasks      []research.Task
+	Batches    []research.BatchSummary
+	Batch      *research.BatchDetail
+	NextBefore int
 }
 
 func New(cfg Config) (*App, error) {
@@ -91,7 +99,7 @@ func New(cfg Config) (*App, error) {
 	if err = json.Unmarshal(products, &catalog); err != nil || catalog == nil {
 		return nil, errors.New("公开产品清单必须为 JSON 数组")
 	}
-	templates, err := template.ParseFS(adminweb.Files, "templates/*.html")
+	templates, err := template.New("admin").Funcs(template.FuncMap{"stateLabel": stateLabel}).ParseFS(adminweb.Files, "templates/*.html")
 	if err != nil {
 		return nil, err
 	}
@@ -127,6 +135,7 @@ func New(cfg Config) (*App, error) {
 	mux.HandleFunc("POST /admin/login", a.login)
 	mux.HandleFunc("GET /admin/{$}", a.overview)
 	mux.HandleFunc("POST /admin/logout", a.logout)
+	a.researchRoutes(mux)
 	css, _ := adminweb.Files.ReadFile("static/admin.css")
 	mux.HandleFunc("GET /admin/static/admin.css", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")
@@ -254,7 +263,7 @@ func (a *App) overview(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	data := view{Username: user.Username, Products: a.productCount}
+	data := view{Username: user.Username, Products: a.productCount, Page: "overview"}
 	err := a.db.QueryRow("SELECT count(*),coalesce(sum(status='qualified'),0),coalesce(sum(status='completed'),0) FROM needs").Scan(&data.Needs, &data.Qualified, &data.Completed)
 	if err != nil {
 		http.Error(w, "数据暂不可用", 500)

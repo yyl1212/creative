@@ -1,0 +1,5 @@
+{{template "research-header" .}}
+<p><a class="text-link" href="/admin/batches">← 返回批次列表</a></p>
+<div class="page-heading"><h1>批次详情</h1><p class="identifier">{{.Batch.BatchID}}</p></div>
+<section class="panel batch-detail"><dl class="facts"><div><dt>执行端</dt><dd>{{.Batch.ProducerName}}</dd></div><div><dt>状态</dt><dd>{{stateLabel .Batch.Status}}</dd></div><div><dt>候选数量</dt><dd>{{.Batch.CandidateCount}}</dd></div><div><dt>接收时间（UTC）</dt><dd><time datetime="{{.Batch.ReceivedAt}}">{{.Batch.ReceivedAt}}</time></dd></div></dl><p class="notice">材料已保存，等待原文核验。费用为执行端自报或未知，尚未核对；本批次不增加合格需求或已完成产品。</p><details open><summary>原始候选与运行报告</summary><pre class="payload" tabindex="0" aria-label="只读候选包">{{.Batch.Payload}}</pre></details></section>
+{{template "research-footer" .}}
