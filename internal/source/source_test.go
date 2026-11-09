@@ -81,3 +81,16 @@ func TestQuoteAuthorBinding(t *testing.T) {
 		t.Fatal("ambiguous authors accepted")
 	}
 }
+
+func TestSiteCanonicalization(t *testing.T) {
+	for _, pair := range [][2]string{{"EXAMPLE.COM.", "example.com"}, {"例子.中国", "xn--fsqu00a.xn--fiqs8s"}} {
+		a, e := SiteKey(pair[0])
+		if e != nil {
+			t.Fatal(e)
+		}
+		b, e := SiteKey(pair[1])
+		if e != nil || a != b {
+			t.Fatalf("same site differs %q %q %v", a, b, e)
+		}
+	}
+}

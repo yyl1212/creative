@@ -1,6 +1,9 @@
 package research
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"github.com/yyl1212/creative/internal/usage"
+)
 
 type batch struct {
 	SchemaVersion string      `json:"schema_version"`
@@ -45,14 +48,6 @@ type Evidence struct {
 	Conditions  []string `json:"conditions"`
 	UnmetNeed   string   `json:"unmet_need"`
 }
-type ExternalUsage struct {
-	ID               string  `json:"usage_id"`
-	Provider         string  `json:"provider"`
-	Model            *string `json:"model"`
-	ReportedCost     *string `json:"reported_cost"`
-	Currency         *string `json:"currency"`
-	BillingReference *string `json:"billing_reference"`
-	Status           string  `json:"cost_status"`
-}
+type ExternalUsage = usage.External
 
 func jsonText(v any) string { b, _ := json.Marshal(v); return string(b) }

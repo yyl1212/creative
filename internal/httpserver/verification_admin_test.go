@@ -75,9 +75,38 @@ func TestVerificationAdminViewsAndRetry(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "0.3") || !strings.Contains(w.Body.String(), "自报") || !strings.Contains(w.Body.String(), "未知") {
 		t.Fatal("usage", w.Code, w.Body.String())
 	}
-	for _, path := range []string{"/admin/needs?before=bad", "/admin/usage?before=-1", "/admin/needs/no"} {
+	for _, path := range []string{"/admin/needs?before=bad", "/admin/usage?before=-1", "/admin/needs/no", "/admin/needs/1?verification=bad"} {
 		if w = b.request("GET", path, nil, nil); w.Code != 422 {
 			t.Fatal("bad id", path, w.Code)
 		}
+	}
+}
+
+func TestHistoricalVerificationPage(t *testing.T) {
+	b, cfg := setupResearch(t)
+	b.login(t)
+	p, _, e := b.app.Auth.CreateProducer("history", "owner", "local")
+	if e != nil {
+		t.Fatal(e)
+	}
+	task, e := b.app.research.CreateTask(p.ID, []string{"export"}, []string{"en"}, 3, "owner", "local")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = b.app.research.Receive(p, httpFixture(t, task.ID)); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = cfg.DB.Exec("INSERT INTO needs(status,title) VALUES ('pending','history fixture')"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = cfg.DB.Exec(`INSERT INTO need_verifications(need_id,batch_row,external_id,decision,verified_at) VALUES (1,1,'one','{"outcome":"needs_evidence","reasons":[],"evidence":[]}',unixepoch())`); e != nil {
+		t.Fatal(e)
+	}
+	w := b.request("GET", "/admin/needs/1?verification=1", nil, nil)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "历史证据") || !strings.Contains(w.Body.String(), "历史结论不会恢复资格") {
+		t.Fatal("history", w.Code, w.Body.String())
+	}
+	if w = b.request("GET", "/admin/needs/1?verification=999", nil, nil); w.Code != 404 {
+		t.Fatal("missing history", w.Code)
 	}
 }

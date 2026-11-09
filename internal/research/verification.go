@@ -134,7 +134,7 @@ func (s *Service) Process(ctx context.Context, l Lease, f SourceFetcher, r Seman
 			sources = append(sources, bound)
 		}
 		prior, e := s.priorNeeds(ctx, producer, c.ExternalID)
-		if e != nil {
+		if e != nil && !errors.Is(e, model.ErrContextTooLarge) {
 			return e
 		}
 		reviewSources := append([]BoundSource(nil), sources...)
@@ -143,8 +143,11 @@ func (s *Service) Process(ctx context.Context, l Lease, f SourceFetcher, r Seman
 			reviewSources[i].Document.Blocks = nil
 			reviewSources[i].Document.Raw = nil
 		}
-		assessment, e := r.Review(ctx, model.Input{Candidate: c, Sources: reviewSources, PriorNeeds: prior})
-		if e != nil {
+		var assessment model.Assessment
+		if e == nil {
+			assessment, e = r.Review(ctx, model.Input{Candidate: c, Sources: reviewSources, PriorNeeds: prior})
+		}
+		if e != nil && !errors.Is(e, model.ErrContextTooLarge) {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
@@ -152,6 +155,10 @@ func (s *Service) Process(ctx context.Context, l Lease, f SourceFetcher, r Seman
 		}
 		verifiedAt := now.Add(time.Since(started))
 		decision := Evaluate(c, sources, assessment, verifiedAt)
+		if errors.Is(e, model.ErrContextTooLarge) {
+			decision.Outcome = "needs_evidence"
+			decision.Reasons = []string{"context_requires_review"}
+		}
 		if e = s.checkpoint(l, producer, c, sources, assessment, prior, decision, verifiedAt); e != nil {
 			return e
 		}
@@ -165,10 +172,15 @@ func (s *Service) priorNeeds(ctx context.Context, producer, external string) ([]
 	}
 	defer rows.Close()
 	out := []model.PriorNeed{}
+	size := 0
 	for rows.Next() {
 		var n model.PriorNeed
 		if e = rows.Scan(&n.ID, &n.Task); e != nil {
 			return nil, e
+		}
+		size += len(n.Task) + 32
+		if size > 96<<10 {
+			return nil, model.ErrContextTooLarge
 		}
 		out = append(out, n)
 	}
@@ -193,7 +205,7 @@ func (s *Service) finishBatch(l Lease, status, reason, reportState string) error
 		state = "waiting_for_signals"
 	}
 	if state != "" {
-		if _, e = tx.Exec("UPDATE research_tasks SET state=?,version=version+1,updated_at=unixepoch() WHERE id=(SELECT task_id FROM research_batches WHERE id=?) AND state!='cancelled' AND is_current=1", state, l.BatchID); e != nil {
+		if _, e = tx.Exec("UPDATE research_tasks SET state=?,version=version+1,updated_at=unixepoch() WHERE id=(SELECT task_id FROM research_batches WHERE id=?) AND state!='cancelled' AND is_current=1 AND (?='paused_service' OR state!='target_reached')", state, l.BatchID, status); e != nil {
 			return e
 		}
 	}

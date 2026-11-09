@@ -1,3 +1,4 @@
+ALTER TABLE needs ADD COLUMN verification_id INTEGER REFERENCES need_verifications(id);
 ALTER TABLE needs ADD COLUMN title TEXT NOT NULL DEFAULT '';
 ALTER TABLE needs ADD COLUMN task TEXT NOT NULL DEFAULT '';
 ALTER TABLE needs ADD COLUMN task_key TEXT NOT NULL DEFAULT '';
@@ -24,14 +25,26 @@ CREATE TABLE need_aliases (
 );
 INSERT INTO need_aliases(producer_id,external_id,latest_batch)
  SELECT b.producer_id,c.external_id,max(b.id) FROM research_candidates c JOIN research_batches b ON b.id=c.batch_row GROUP BY b.producer_id,c.external_id;
+CREATE TABLE need_verifications (
+ id INTEGER PRIMARY KEY,
+ external_id TEXT NOT NULL,
+ need_id INTEGER NOT NULL REFERENCES needs(id),
+ batch_row INTEGER NOT NULL REFERENCES research_batches(id),
+ decision TEXT NOT NULL,
+ verified_at INTEGER NOT NULL,
+ UNIQUE(batch_row,external_id),
+ UNIQUE(need_id,id)
+);
 CREATE TABLE need_sources (
  need_id INTEGER NOT NULL REFERENCES needs(id),
+ verification_id INTEGER NOT NULL,
  evidence_id TEXT NOT NULL,
  fingerprint TEXT NOT NULL,
  snapshot TEXT NOT NULL,
  raw BLOB,
  fetched_at INTEGER NOT NULL,
- PRIMARY KEY(need_id,evidence_id)
+ PRIMARY KEY(need_id,verification_id,evidence_id),
+ FOREIGN KEY(need_id,verification_id) REFERENCES need_verifications(need_id,id)
 );
 CREATE INDEX need_evidence_fingerprint ON need_sources(fingerprint);
 CREATE TABLE research_worker (

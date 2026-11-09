@@ -17,6 +17,7 @@ import (
 )
 
 var ErrUnavailable = errors.New("model_service_unavailable")
+var ErrContextTooLarge = errors.New("context_requires_review")
 
 type Provider struct {
 	Enabled   bool   `json:"enabled"`
@@ -125,8 +126,11 @@ func (r *Reviewer) Review(ctx context.Context, input Input) (Assessment, error) 
 		return zero, ErrUnavailable
 	}
 	data, err := json.Marshal(input)
-	if err != nil || len(data) > 128<<10 {
+	if err != nil {
 		return zero, ErrUnavailable
+	}
+	if len(data) > 128<<10 {
+		return zero, ErrContextTooLarge
 	}
 	for _, provider := range []string{r.cfg.Primary, r.cfg.Fallback} {
 		if provider == "" || !r.enabled(provider) {

@@ -16,6 +16,10 @@ func recomputeTasks(tx *sql.Tx, now time.Time) error {
 		return e
 	}
 	_, e = tx.Exec(`UPDATE research_tasks SET state=CASE WHEN target_count<=? THEN 'target_reached' ELSE 'active' END,version=version+1,updated_at=? WHERE is_current=1 AND state IN ('active','target_reached') AND state!=CASE WHEN target_count<=? THEN 'target_reached' ELSE 'active' END`, count, now.Unix(), count)
+	if e != nil {
+		return e
+	}
+	_, e = tx.Exec("UPDATE research_tasks SET state='target_reached',version=version+1,updated_at=? WHERE is_current=1 AND state='waiting_for_signals' AND target_count<=?", now.Unix(), count)
 	return e
 }
 func hydrateTask(tx *sql.Tx, t *Task, now time.Time) error {
@@ -43,6 +47,8 @@ func (s *Service) Maintenance(now time.Time) error {
 		{"UPDATE research_batches SET payload=X'',raw_purged=1,version=version+1 WHERE created_at<=? AND raw_purged=0", []any{now.AddDate(0, 0, -30).Unix()}},
 		{"UPDATE need_sources SET raw=NULL WHERE fetched_at<=?", []any{now.AddDate(0, 0, -30).Unix()}},
 		{"DELETE FROM need_sources WHERE fetched_at<=?", []any{now.AddDate(0, 0, -180).Unix()}},
+		{"UPDATE needs SET verification_id=NULL WHERE verification_id IN (SELECT id FROM need_verifications WHERE verified_at<=?)", []any{now.AddDate(0, 0, -180).Unix()}},
+		{"DELETE FROM need_verifications WHERE verified_at<=?", []any{now.AddDate(0, 0, -180).Unix()}},
 		{"UPDATE needs SET title='',task='',task_key='',task_fingerprint='',decision='{}',version=version+1 WHERE updated_at>0 AND updated_at<=? AND status!='completed' AND title!=''", []any{now.AddDate(0, 0, -180).Unix()}},
 		{"DELETE FROM need_aliases WHERE latest_batch IN (SELECT id FROM research_batches WHERE created_at<=?) AND (need_id IS NULL OR need_id IN (SELECT id FROM needs WHERE status!='completed'))", []any{now.AddDate(0, 0, -180).Unix()}},
 		{"DELETE FROM research_candidates WHERE batch_row IN (SELECT id FROM research_batches WHERE created_at<=? AND metadata_purged=0)", []any{now.AddDate(0, 0, -180).Unix()}},

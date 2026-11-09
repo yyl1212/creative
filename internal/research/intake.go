@@ -15,6 +15,7 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/yyl1212/creative/internal/auth"
 	"github.com/yyl1212/creative/internal/jsonutil"
+	"github.com/yyl1212/creative/internal/usage"
 	"github.com/yyl1212/creative/schemas"
 )
 
@@ -198,7 +199,7 @@ func (s *Service) Receive(p auth.Producer, raw []byte) ([]byte, error) {
 			return nil, err
 		}
 	}
-	if err = recordExternalUsage(tx, p.ID, b.RunReport.Usage); err != nil {
+	if err = usage.RecordExternal(tx, p.ID, time.Now().Unix(), b.RunReport.Usage); err != nil {
 		return nil, err
 	}
 	if err = recomputeTasks(tx, time.Now()); err != nil {

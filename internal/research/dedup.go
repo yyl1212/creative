@@ -30,6 +30,13 @@ func (s *Service) checkpoint(l Lease, producer string, c candidate, sources []Bo
 	if e != nil {
 		return e
 	}
+	if existing != nil {
+		var canonicalLatest int
+		if e = tx.QueryRow("SELECT max(latest_batch) FROM need_aliases WHERE need_id=?", *existing).Scan(&canonicalLatest); e != nil {
+			return e
+		}
+		latest = max(latest, canonicalLatest)
+	}
 	outcome := d.Outcome
 	needID := existing
 	if latest != l.BatchID {
@@ -75,7 +82,7 @@ func (s *Service) checkpoint(l Lease, producer string, c candidate, sources []Bo
 					if !ev.Valid {
 						continue
 					}
-					e = tx.QueryRow("SELECT need_id FROM need_sources WHERE fingerprint=? AND need_id!=? ORDER BY need_id LIMIT 1", ev.Fingerprint, exclude).Scan(&found)
+					e = tx.QueryRow("SELECT s.need_id FROM need_sources s JOIN needs n ON n.id=s.need_id AND n.verification_id=s.verification_id WHERE s.fingerprint=? AND s.need_id!=? ORDER BY s.need_id LIMIT 1", ev.Fingerprint, exclude).Scan(&found)
 					if e != nil && e != sql.ErrNoRows {
 						return e
 					}
@@ -123,9 +130,17 @@ func (s *Service) checkpoint(l Lease, producer string, c candidate, sources []Bo
 				if _, e = tx.Exec("UPDATE needs SET status=?,title=?,task=?,task_key=?,task_fingerprint=?,rules_version=?,verified_at=?,valid_until=?,decision=?,updated_at=?,version=version+1 WHERE id=? AND status!='completed'", status, c.Title, c.Job, d.TaskKey, d.TaskFingerprint, rulesVersion, now.Unix(), validUntil, jsonText(d), now.Unix(), *needID); e != nil {
 					return e
 				}
-				if _, e = tx.Exec("DELETE FROM need_sources WHERE need_id=?", *needID); e != nil {
-					return e
-				}
+			}
+			verification, e := tx.Exec("INSERT INTO need_verifications(need_id,batch_row,external_id,decision,verified_at) VALUES (?,?,?,?,?)", *needID, l.BatchID, c.ExternalID, jsonText(d), now.Unix())
+			if e != nil {
+				return e
+			}
+			verificationID, e := verification.LastInsertId()
+			if e != nil {
+				return e
+			}
+			if _, e = tx.Exec("UPDATE needs SET verification_id=? WHERE id=?", verificationID, *needID); e != nil {
+				return e
 			}
 			for i, b := range sources {
 				snapshot := b
@@ -139,8 +154,24 @@ func (s *Service) checkpoint(l Lease, producer string, c candidate, sources []Bo
 						excerpts = append(excerpts, m.Conditions...)
 					}
 				}
-				snapshot.Block.Text = strings.Join(excerpts, "\n")
-				if _, e = tx.Exec("INSERT INTO need_sources(need_id,evidence_id,fingerprint,snapshot,raw,fetched_at) VALUES (?,?,?,?,?,?)", *needID, b.ID, d.Evidence[i].Fingerprint, jsonText(snapshot), b.Document.Raw, now.Unix()); e != nil {
+				verifiedExcerpts := []string{}
+				for _, quote := range excerpts {
+					if !contains(b.Block.Text, quote) {
+						continue
+					}
+					covered := false
+					for _, previous := range verifiedExcerpts {
+						if contains(previous, quote) {
+							covered = true
+							break
+						}
+					}
+					if !covered {
+						verifiedExcerpts = append(verifiedExcerpts, quote)
+					}
+				}
+				snapshot.Block.Text = strings.Join(verifiedExcerpts, "\n")
+				if _, e = tx.Exec("INSERT INTO need_sources(need_id,verification_id,evidence_id,fingerprint,snapshot,raw,fetched_at) VALUES (?,?,?,?,?,?,?)", *needID, verificationID, b.ID, d.Evidence[i].Fingerprint, jsonText(snapshot), b.Document.Raw, now.Unix()); e != nil {
 					return e
 				}
 			}
@@ -158,6 +189,11 @@ func (s *Service) checkpoint(l Lease, producer string, c candidate, sources []Bo
 	suggestions := []string{}
 	if outcome == "needs_evidence" {
 		suggestions = append(suggestions, "请补充独立用户原始链接、可定位作者/日期及完整付费条件；不要推测未知事实")
+	}
+	for _, reason := range d.Reasons {
+		if reason == "context_requires_review" {
+			suggestions = []string{"材料超过完整语义复核范围，请管理员拆分审核；不能截断历史后假定需求独立"}
+		}
 	}
 	r := Result{ExternalID: c.ExternalID, NeedID: needID, Outcome: &outcome, ValidationState: "completed", ReasonCodes: d.Reasons, Issues: issues, Suggestions: suggestions}
 	if _, e = tx.Exec("UPDATE research_candidates SET result=?,need_id=? WHERE batch_row=? AND external_id=? AND result IS NULL", jsonText(r), needID, l.BatchID, c.ExternalID); e != nil {

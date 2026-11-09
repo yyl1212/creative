@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+type VerificationSummary struct {
+	ID, BatchID         int
+	VerifiedAt, Outcome string
+}
 type Need struct {
 	ID                     int
 	Title, Task, Status    string
@@ -13,15 +17,18 @@ type Need struct {
 	VerifiedAt, ValidUntil string
 	Decision               Decision
 	Sources                []BoundSource
+	VerificationID         int
+	Historical             bool
+	History                []VerificationSummary
 }
 
-const needColumns = "id,title,task,status,version,verified_at,valid_until,decision,rules_version"
+const needColumns = "id,title,task,status,version,verified_at,valid_until,decision,rules_version,coalesce(verification_id,0)"
 
 func scanNeed(row interface{ Scan(...any) error }) (Need, error) {
 	var n Need
 	var verified, until int64
 	var decision, rule string
-	e := row.Scan(&n.ID, &n.Title, &n.Task, &n.Status, &n.Version, &verified, &until, &decision, &rule)
+	e := row.Scan(&n.ID, &n.Title, &n.Task, &n.Status, &n.Version, &verified, &until, &decision, &rule, &n.VerificationID)
 	if e != nil {
 		return n, e
 	}
@@ -67,7 +74,7 @@ func (s *Service) Needs(before int) ([]Need, int, error) {
 	}
 	return out, next, nil
 }
-func (s *Service) Need(id int) (*Need, error) {
+func (s *Service) Need(id, selected int) (*Need, error) {
 	tx, e := s.db.Begin()
 	if e != nil {
 		return nil, e
@@ -80,7 +87,49 @@ func (s *Service) Need(id int) (*Need, error) {
 	if e != nil {
 		return nil, e
 	}
-	rows, e := tx.Query("SELECT snapshot FROM need_sources WHERE need_id=? ORDER BY evidence_id", id)
+	history, e := tx.Query("SELECT id,batch_row,verified_at,decision FROM need_verifications WHERE need_id=? ORDER BY id DESC LIMIT 50", id)
+	if e != nil {
+		return nil, e
+	}
+	for history.Next() {
+		var v VerificationSummary
+		var stamp int64
+		var raw string
+		if e = history.Scan(&v.ID, &v.BatchID, &stamp, &raw); e != nil {
+			history.Close()
+			return nil, e
+		}
+		var d Decision
+		if e = json.Unmarshal([]byte(raw), &d); e != nil {
+			history.Close()
+			return nil, e
+		}
+		v.Outcome = d.Outcome
+		v.VerifiedAt = time.Unix(stamp, 0).UTC().Format(time.RFC3339)
+		n.History = append(n.History, v)
+	}
+	e = history.Err()
+	history.Close()
+	if e != nil {
+		return nil, e
+	}
+	if selected > 0 {
+		var decision string
+		var stamp int64
+		e = tx.QueryRow("SELECT decision,verified_at FROM need_verifications WHERE need_id=? AND id=?", id, selected).Scan(&decision, &stamp)
+		if e == sql.ErrNoRows {
+			return nil, fail(404, "verification_not_found", "/verification", "核验版本不存在或已过保留期限")
+		}
+		if e != nil {
+			return nil, e
+		}
+		n.Historical = selected != n.VerificationID
+		n.VerificationID = selected
+		if e = json.Unmarshal([]byte(decision), &n.Decision); e != nil {
+			return nil, e
+		}
+	}
+	rows, e := tx.Query("SELECT snapshot FROM need_sources WHERE need_id=? AND verification_id=? ORDER BY evidence_id", id, n.VerificationID)
 	if e != nil {
 		return nil, e
 	}

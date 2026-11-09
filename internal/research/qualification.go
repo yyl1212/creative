@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"math/big"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/yyl1212/creative/internal/model"
 	"github.com/yyl1212/creative/internal/source"
+	"golang.org/x/net/idna"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -52,18 +54,106 @@ func taskFingerprint(c candidate) string {
 func contains(text, quote string) bool {
 	return source.Normalize(quote) != "" && strings.Contains(source.Normalize(text), source.Normalize(quote))
 }
+
+var priceNumbers = regexp.MustCompile(`[0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?`)
+
 func supportedPrice(p *Price, quote string) bool {
 	if p == nil || p.Amount == nil || p.Currency == nil || p.Unit == nil || *p.Amount == "" || *p.Currency == "" || *p.Unit == "" {
 		return false
 	}
-	n, ok := new(big.Rat).SetString(*p.Amount)
-	if !ok || n.Sign() <= 0 {
+	amount, ok := new(big.Rat).SetString(*p.Amount)
+	if !ok || amount.Sign() <= 0 {
 		return false
 	}
-	return regexp.MustCompile(`(^|[^0-9.])`+regexp.QuoteMeta(*p.Amount)+`([^0-9.]|$)`).MatchString(quote) && contains(quote, *p.Currency) && contains(quote, *p.Unit)
+	text := norm.NFKC.String(quote)
+	numberOK := false
+	for _, literal := range priceNumbers.FindAllString(text, -1) {
+		n, ok := new(big.Rat).SetString(strings.ReplaceAll(literal, ",", ""))
+		if ok && n.Cmp(amount) == 0 {
+			numberOK = true
+		}
+	}
+	currencyOK := regexp.MustCompile(`(^|[^A-Za-z])` + regexp.QuoteMeta(*p.Currency) + `([^A-Za-z]|$)`).MatchString(text)
+	names := map[string][]string{"USD": {"美元", "美金", "US$", "US dollars"}, "CNY": {"人民币", "RMB"}, "EUR": {"欧元"}, "GBP": {"英镑"}, "JPY": {"日元"}}
+	for _, name := range names[*p.Currency] {
+		if contains(text, name) {
+			currencyOK = true
+		}
+	}
+	unitOK := contains(normalized(text), normalized(*p.Unit))
+	periods := [][]string{{"per month", "monthly", "每月", "/month", "/月"}, {"per year", "yearly", "annually", "每年", "/year", "/年"}, {"per day", "daily", "每天", "每日", "/day", "/天"}, {"per use", "per export", "每次", "/次"}, {"once", "one-time", "一次性"}}
+	for _, group := range periods {
+		matches := false
+		for _, unit := range group {
+			if normalized(*p.Unit) == unit {
+				matches = true
+			}
+		}
+		if matches {
+			for _, unit := range group {
+				if contains(normalized(text), unit) {
+					unitOK = true
+				}
+			}
+		}
+	}
+	return numberOK && currencyOK && unitOK
+}
+func authorRefKey(ref string) string {
+	u, e := url.Parse(ref)
+	if e != nil || u.Host == "" {
+		return normalized(ref)
+	}
+	host, e := idna.Lookup.ToASCII(strings.ToLower(strings.TrimSuffix(u.Hostname(), ".")))
+	if e != nil {
+		return normalized(ref)
+	}
+	u.Scheme = ""
+	u.Host = host
+	u.Fragment = ""
+	u.Path = strings.TrimRight(u.Path, "/")
+	u.RawPath = ""
+	u.RawQuery = u.Query().Encode()
+	return normalized(u.String())
+}
+
+// 先建立所有已绑定身份的连通关系，避免 A/B/C 的别名顺序影响独立人数。
+func authorGroups(sources []BoundSource) map[string]string {
+	parents := map[string]string{}
+	var find func(string) string
+	find = func(k string) string {
+		p, ok := parents[k]
+		if !ok {
+			parents[k] = k
+			return k
+		}
+		if p != k {
+			parents[k] = find(p)
+		}
+		return parents[k]
+	}
+	for _, b := range sources {
+		if b.Block.Author == "" || b.Block.AuthorRef == "" {
+			continue
+		}
+		name, ref := find("name:"+normalized(b.Block.Author)), find("ref:"+authorRefKey(b.Block.AuthorRef))
+		if name != ref {
+			if name < ref {
+				parents[ref] = name
+			} else {
+				parents[name] = ref
+			}
+		}
+	}
+	out := map[string]string{}
+	for _, b := range sources {
+		out[b.ID] = find("name:" + normalized(b.Block.Author))
+	}
+	return out
 }
 func Evaluate(c candidate, sources []BoundSource, a model.Assessment, now time.Time) Decision {
 	d := Decision{Outcome: "needs_evidence", Reasons: []string{}, Evidence: []EvidenceDecision{}, TaskKey: normalized(a.TaskKey), TaskFingerprint: taskFingerprint(c)}
+	groups := authorGroups(sources)
 	bySource := map[string]BoundSource{}
 	for _, b := range sources {
 		bySource[b.ID] = b
@@ -78,7 +168,8 @@ func Evaluate(c candidate, sources []BoundSource, a model.Assessment, now time.T
 	for _, e := range c.Evidence {
 		b, found := bySource[e.ID]
 		m, assessed := byAssessment[e.ID]
-		r := EvidenceDecision{ID: e.ID, Reason: "metadata_unverified", Site: b.Document.Site, AuthorKey: normalized(b.Block.Author), Fingerprint: fingerprint(normalized(b.Block.Author) + "\n" + normalized(e.Quote))}
+		site, _ := source.SiteKey(b.Document.Site)
+		r := EvidenceDecision{ID: e.ID, Reason: "metadata_unverified", Site: site, AuthorKey: groups[e.ID], Fingerprint: fingerprint(normalized(b.Block.Author) + "\n" + normalized(e.Quote))}
 		date := time.Time{}
 		if e.PublishedAt != nil {
 			date, _ = time.Parse(time.RFC3339, *e.PublishedAt)
@@ -87,7 +178,7 @@ func Evaluate(c candidate, sources []BoundSource, a model.Assessment, now time.T
 		case !found || b.Issue == "source_unavailable":
 			r.Reason = "source_unavailable"
 		case b.Issue != "":
-		case !contains(b.Block.Text, e.Quote) || e.AuthorRef == nil || date.IsZero() || b.Block.PublishedAt.IsZero() || !date.Equal(b.Block.PublishedAt) || b.Document.FetchedAt.IsZero() || b.Document.FetchedAt.After(now.Add(time.Minute)) || b.Block.PublishedAt.After(now) || b.Block.Author == "" || b.Block.AuthorRef == "" || b.Document.Site == "":
+		case !contains(b.Block.Text, e.Quote) || e.AuthorRef == nil || date.IsZero() || b.Block.PublishedAt.IsZero() || !date.Equal(b.Block.PublishedAt) || b.Document.FetchedAt.IsZero() || b.Document.FetchedAt.After(now.Add(time.Minute)) || b.Block.PublishedAt.After(now) || b.Block.Author == "" || b.Block.AuthorRef == "" || site == "":
 		case normalized(*e.AuthorRef) != normalized(b.Block.Author) && normalized(*e.AuthorRef) != normalized(b.Block.AuthorRef):
 		case !assessed || !m.Relevant || !m.Original || !m.DirectUser || !m.Independent:
 			r.Reason = "semantic_unverified"

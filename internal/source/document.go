@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"golang.org/x/net/html"
+	"golang.org/x/net/idna"
 	"golang.org/x/net/publicsuffix"
 )
 
@@ -93,7 +94,7 @@ func Extract(raw []byte, finalURL string) (Document, error) {
 	if e != nil {
 		return d, e
 	}
-	d.Site, e = publicsuffix.EffectiveTLDPlusOne(u.Hostname())
+	d.Site, e = SiteKey(u.Hostname())
 	if e != nil {
 		return d, ErrUnavailable
 	}
@@ -177,4 +178,13 @@ func Extract(raw []byte, finalURL string) (Document, error) {
 		return Document{}, ErrUnavailable
 	}
 	return d, nil
+}
+
+// SiteKey 把同一 DNS 名称的大小写、尾点和 IDN 表示折叠为一个站点。
+func SiteKey(host string) (string, error) {
+	ascii, e := idna.Lookup.ToASCII(strings.ToLower(strings.TrimSuffix(host, ".")))
+	if e != nil {
+		return "", e
+	}
+	return publicsuffix.EffectiveTLDPlusOne(ascii)
 }

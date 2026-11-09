@@ -98,3 +98,7 @@ flowchart LR
 来源/语义解析并不承诺覆盖所有网站：无法可靠定位、验证或确认独立性的材料返回补证。真实模型账号与能力尚未验收，默认禁用；离线字段/规则样本通过不等于真实模型准确率通过。定时平台网络与串行关卡仍只阻塞迭代 4。新用户指示已移除非 Mac 验收关卡。
 
 API 依据：[OpenAI 结构化输出](https://developers.openai.com/api/docs/guides/structured-outputs)、[DeepSeek JSON 输出](https://api-docs.deepseek.com/guides/json_mode/)、[DeepSeek Chat Completions](https://api-docs.deepseek.com/api/create-chat-completion/)。本轮不预设用户可访问某个模型 ID，不发送真实凭据或付费请求。
+
+## 审查修复的文件补充
+
+新增 `internal/usage/external.go` 让 003 迁移和在线接收共用费用去重，`internal/jsonutil/check.go` 共用严格 JSON 规则；003 增加独立核验版本和当前版本指针，来源按版本保留。新增 `internal/research/review_regression_test.go`、`internal/store/review_migration_test.go` 覆盖独立审查复现。固定规则无需另建 research.json。架构路径仍为接收→安全抓取→语义辅助→程序门槛→持久版本/回执→Mac 管理页面，v1 请求契约不变。
