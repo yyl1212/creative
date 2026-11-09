@@ -124,3 +124,11 @@ func TestEvidenceIndependence(t *testing.T) {
 		}
 	}
 }
+
+func TestNonSelfServiceRejected(t *testing.T) {
+	c, b, a := qualificationFixture()
+	a.SelfService = false
+	if d := Evaluate(c, b, a, fixtureNow); d.Outcome != "rejected" {
+		t.Fatalf("unsupported delivery %+v", d)
+	}
+}

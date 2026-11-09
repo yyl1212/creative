@@ -131,3 +131,11 @@ func TestProviderFailureBoundaries(t *testing.T) {
 		t.Fatalf("retry or unknown usage: %+v %v", j, err)
 	}
 }
+
+func TestModelDuplicateJSONKeys(t *testing.T) {
+	j := &journal{}
+	r := configured(t, "deepseek", j)
+	if _, err := r.decode(strings.Replace(answer, `"self_service":true`, `"self_service":false,"self_service":true`, 1)); err == nil {
+		t.Fatal("duplicate model keys accepted")
+	}
+}

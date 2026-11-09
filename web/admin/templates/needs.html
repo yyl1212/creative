@@ -1,0 +1,6 @@
+{{template "research-header" .}}
+<div class="page-heading"><h1>需求池</h1><p>查看核验结论、证据缺口与资格有效期。</p></div>
+<section class="panel batch-list" aria-label="需求列表">{{range .NeedItems}}<article class="list-item"><div class="item-heading"><h2><a class="text-link" href="/admin/needs/{{.ID}}">{{if .Title}}{{.Title}}{{else}}需求 #{{.ID}} · 材料已清理{{end}}</a></h2><span class="status">{{if eq .Status "completed"}}已完成{{else}}{{stateLabel .Status}}{{end}}</span></div><p>{{.Task}}</p>{{if .ValidUntil}}<p class="field-help">资格截止（UTC）：<time datetime="{{.ValidUntil}}">{{.ValidUntil}}</time></p>{{end}}{{range .Decision.Reasons}}<p>{{reasonLabel .}}</p>{{end}}</article>{{else}}<p class="empty-note">暂无核验后的需求。提交的候选完成核验后会出现在这里。</p>{{end}}</section>
+<nav class="pagination" aria-label="需求分页"><a class="text-link" href="/admin/needs">最新需求</a>{{if .NextBefore}}<a class="text-link" href="/admin/needs?before={{.NextBefore}}">更早需求 →</a>{{end}}</nav>
+<p class="footnote">合格只表示达到当前证据门槛。立项、开发和发布审核将在后续迭代开放。</p>
+{{template "research-footer" .}}

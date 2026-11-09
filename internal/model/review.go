@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
+	"github.com/yyl1212/creative/internal/jsonutil"
 )
 
 var ErrUnavailable = errors.New("model_service_unavailable")
@@ -153,6 +154,9 @@ func (r *Reviewer) Review(ctx context.Context, input Input) (Assessment, error) 
 }
 func (r *Reviewer) decode(raw string) (Assessment, error) {
 	var a Assessment
+	if e := jsonutil.Check([]byte(raw)); e != nil {
+		return a, e
+	}
 	doc, e := jsonschema.UnmarshalJSON(strings.NewReader(raw))
 	if e != nil {
 		return a, e

@@ -84,8 +84,9 @@ func Evaluate(c candidate, sources []BoundSource, a model.Assessment, now time.T
 			date, _ = time.Parse(time.RFC3339, *e.PublishedAt)
 		}
 		switch {
-		case !found || b.Issue != "":
+		case !found || b.Issue == "source_unavailable":
 			r.Reason = "source_unavailable"
+		case b.Issue != "":
 		case !contains(b.Block.Text, e.Quote) || e.AuthorRef == nil || date.IsZero() || b.Block.PublishedAt.IsZero() || !date.Equal(b.Block.PublishedAt) || b.Document.FetchedAt.IsZero() || b.Document.FetchedAt.After(now.Add(time.Minute)) || b.Block.PublishedAt.After(now) || b.Block.Author == "" || b.Block.AuthorRef == "" || b.Document.Site == "":
 		case normalized(*e.AuthorRef) != normalized(b.Block.Author) && normalized(*e.AuthorRef) != normalized(b.Block.AuthorRef):
 		case !assessed || !m.Relevant || !m.Original || !m.DirectUser || !m.Independent:
@@ -121,6 +122,7 @@ func Evaluate(c candidate, sources []BoundSource, a model.Assessment, now time.T
 		d.Evidence = append(d.Evidence, r)
 	}
 	if !a.SelfService {
+		d.Outcome = "rejected"
 		d.Reasons = append(d.Reasons, "not_self_service")
 	}
 	if d.TaskKey == "" || !a.DistinctFromExisting {

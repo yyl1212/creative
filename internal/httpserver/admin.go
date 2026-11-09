@@ -51,21 +51,25 @@ type App struct {
 	apiSlots     chan struct{}
 }
 type view struct {
-	CSRF       template.HTML
-	Error      string
-	Username   string
-	Needs      int
-	Qualified  int
-	Completed  int
-	Products   int
-	Page       string
-	Secret     string
-	APIEnabled bool
-	Producers  []auth.Producer
-	Tasks      []research.Task
-	Batches    []research.BatchSummary
-	Batch      *research.BatchDetail
-	NextBefore int
+	CSRF         template.HTML
+	Error        string
+	Username     string
+	Needs        int
+	Qualified    int
+	Completed    int
+	Products     int
+	Page         string
+	Secret       string
+	APIEnabled   bool
+	Producers    []auth.Producer
+	Tasks        []research.Task
+	Batches      []research.BatchSummary
+	Batch        *research.BatchDetail
+	NeedItems    []research.Need
+	Need         *research.Need
+	UsageRecords []research.UsageRecord
+	UsageTotals  []research.UsageTotal
+	NextBefore   int
 }
 
 func New(cfg Config) (*App, error) {
@@ -99,7 +103,7 @@ func New(cfg Config) (*App, error) {
 	if err = json.Unmarshal(products, &catalog); err != nil || catalog == nil {
 		return nil, errors.New("公开产品清单必须为 JSON 数组")
 	}
-	templates, err := template.New("admin").Funcs(template.FuncMap{"stateLabel": stateLabel}).ParseFS(adminweb.Files, "templates/*.html")
+	templates, err := template.New("admin").Funcs(template.FuncMap{"stateLabel": stateLabel, "reasonLabel": reasonLabel}).ParseFS(adminweb.Files, "templates/*.html")
 	if err != nil {
 		return nil, err
 	}
@@ -264,7 +268,8 @@ func (a *App) overview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := view{Username: user.Username, Products: a.productCount, Page: "overview"}
-	err := a.db.QueryRow("SELECT count(*),coalesce(sum(status='qualified'),0),coalesce(sum(status='completed'),0) FROM needs").Scan(&data.Needs, &data.Qualified, &data.Completed)
+	var err error
+	data.Needs, data.Qualified, data.Completed, err = a.research.Counts()
 	if err != nil {
 		http.Error(w, "数据暂不可用", 500)
 		return

@@ -7,15 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/netip"
 	"net/url"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/yyl1212/creative/internal/auth"
+	"github.com/yyl1212/creative/internal/jsonutil"
 	"github.com/yyl1212/creative/schemas"
 )
 
@@ -62,16 +61,8 @@ func (s *Service) parse(raw []byte) (batch, error) {
 	if len(raw) > 1<<20 {
 		return b, fail(413, "body_too_large", "/", "请求不能超过 1 MiB")
 	}
-	if !utf8.Valid(raw) {
-		return b, fail(400, "invalid_json", "/", "JSON 必须为有效 UTF-8")
-	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
-	if err := uniqueJSON(dec, 0); err != nil {
-		return b, fail(400, "invalid_json", "/", "JSON 无效、重复字段或嵌套过深")
-	}
-	if _, err := dec.Token(); err != io.EOF {
-		return b, fail(400, "invalid_json", "/", "请求只能包含一个 JSON 值")
+	if err := jsonutil.Check(raw); err != nil {
+		return b, fail(400, "invalid_json", "/", "JSON 无效、重复字段、非 UTF-8 或嵌套过深")
 	}
 	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
 	if err != nil {
@@ -125,48 +116,6 @@ func (s *Service) parse(raw []byte) (batch, error) {
 	return b, nil
 }
 
-// JSON 的重复键会被 encoding/json 静默覆盖，须在 Schema 校验前拒绝。
-func uniqueJSON(d *json.Decoder, depth int) error {
-	if depth > 32 {
-		return errors.New("depth")
-	}
-	tok, err := d.Token()
-	if err != nil {
-		return err
-	}
-	delim, ok := tok.(json.Delim)
-	if !ok {
-		return nil
-	}
-	switch delim {
-	case '{':
-		seen := map[string]bool{}
-		for d.More() {
-			key, err := d.Token()
-			if err != nil {
-				return err
-			}
-			s, ok := key.(string)
-			if !ok || seen[s] {
-				return errors.New("duplicate key")
-			}
-			seen[s] = true
-			if err = uniqueJSON(d, depth+1); err != nil {
-				return err
-			}
-		}
-	case '[':
-		for d.More() {
-			if err = uniqueJSON(d, depth+1); err != nil {
-				return err
-			}
-		}
-	default:
-		return errors.New("delimiter")
-	}
-	_, err = d.Token()
-	return err
-}
 func publicURL(raw string) bool {
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" || u.User != nil || u.Scheme != "http" && u.Scheme != "https" {

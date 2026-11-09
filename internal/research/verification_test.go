@@ -361,3 +361,56 @@ func TestSingleSourceFailureAndWaiting(t *testing.T) {
 		t.Fatalf("%+v %v", current, e)
 	}
 }
+
+func TestUsageTotalsNeverConfirmUnknown(t *testing.T) {
+	s, db, _, _, _, _ := setupVerification(t)
+	_, e := db.Exec("INSERT INTO usage_records(origin,provider,cost_status) VALUES ('website','openai','unknown')")
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, totals, _, e := s.Usage(0)
+	if e != nil || len(totals) != 1 || totals[0].Verified != "尚未核对" {
+		t.Fatalf("unknown appears confirmed %+v %v", totals, e)
+	}
+}
+
+func TestSupplementDoesNotDuplicateAnotherNeed(t *testing.T) {
+	s, db, p, task, f, r := setupVerification(t)
+	submitQualified(t, s, p, task.ID, "initial-own", "one")
+	processFixture(t, s, f, r)
+	c, _, _ := qualificationFixture()
+	c.Job = "another existing task"
+	key := taskFingerprint(c)
+	_, e := db.Exec("INSERT INTO needs(status,title,task,task_key,task_fingerprint,rules_version,verified_at,valid_until) VALUES ('qualified','existing',?,?,?,?,?,?)", c.Job, c.Job, key, rulesVersion, fixtureNow.Unix(), fixtureNow.AddDate(0, 0, 30).Unix())
+	if e != nil {
+		t.Fatal(e)
+	}
+	raw := change(t, fixture(t, task.ID), func(v map[string]any) {
+		v["batch_id"] = "changed-task"
+		v["candidates"].([]any)[0].(map[string]any)["external_id"] = "one"
+		v["candidates"].([]any)[0].(map[string]any)["job_to_be_done"] = c.Job
+	})
+	if _, e = s.Receive(p, raw); e != nil {
+		t.Fatal(e)
+	}
+	lease, e := s.Claim(context.Background(), "worker", time.Now())
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, sources, assessment := qualificationFixture()
+	c.ExternalID = "one"
+	assessment.TaskKey = c.Job
+	d := Evaluate(c, sources, assessment, fixtureNow)
+	if e = s.checkpoint(*lease, p.ID, c, sources, assessment, []model.PriorNeed{{ID: 2, Task: c.Job}}, d, fixtureNow); e != nil {
+		t.Fatal(e)
+	}
+	var n int
+	_ = db.QueryRow("SELECT count(*) FROM needs WHERE status='qualified'").Scan(&n)
+	if n != 1 {
+		t.Fatal("supplement duplicated canonical need", n)
+	}
+	receipt, e := s.Receipt(p, "changed-task")
+	if e != nil || *receipt.Results[0].NeedID != 2 || *receipt.Results[0].Outcome != "duplicate" {
+		t.Fatalf("canonical %+v %v", receipt, e)
+	}
+}

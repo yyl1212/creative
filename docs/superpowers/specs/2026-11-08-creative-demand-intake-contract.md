@@ -155,3 +155,9 @@ v1 初始只接收约定版本；未知字段与版本明确报错，不猜测�
 实际类型以 `schemas/demand-batch.v1.schema.json` 为准，服务启动时离线编译同一文件。所有对象拒绝未知字段；重复 JSON 键为 400。替代方案字段明确为 name、url、checked_at、method、limitations、basis，分别对应原表中的名称、URL、检查时间、检查方式、不足与依据。模型费用的 model 非 null 时只接受 OpenAI/DeepSeek 命名范围；搜索等非模型服务的 model 为 null。零候选运行报告合法。
 
 接收回执保留稳定 batch_id/status/receipt_url；查询回执中未验证项 need_id/outcome 为 null，validation_state 为 pending_validation，并提供提示。接收并不声称资格核验完成。本轮具体行为及尚未完成的部分见 `docs/iteration-02-validation.md`。
+
+## 迭代 3 实施补充（2026-11-09）
+
+v1 请求字段、路径和首次接收回执不变；查询回执现提供逐候选核验结果。网站通过新迁移保存资格、逐项检查点与费用，历史原始批次照常恢复。合格数只包含当前 strong-wtp.v1 下去重、未过期且完成原文核验的需求，不信任旧库手工 status 标记。补证入库立即撤销旧资格；完成需求受保护。
+
+原始材料 30 天到期后同字节重试仍返回原始接收回执；180 天后查询结果可能为空并显示资料过期，管理员可见清理原因。跨厂商模型响应保持内部接口隔离，不改变外部批次版本。只实现 Mac 桌面管理页面。兼容性自查与运行依据见 `docs/iteration-03-validation.md`。

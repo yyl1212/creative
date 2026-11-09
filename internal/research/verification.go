@@ -83,6 +83,7 @@ func checkLease(tx *sql.Tx, l Lease) error {
 	return nil
 }
 func (s *Service) Process(ctx context.Context, l Lease, f SourceFetcher, r SemanticReviewer, now time.Time) error {
+	started := time.Now()
 	if e := s.Heartbeat(ctx, l, time.Now()); e != nil {
 		return e
 	}
@@ -132,7 +133,7 @@ func (s *Service) Process(ctx context.Context, l Lease, f SourceFetcher, r Seman
 			}
 			sources = append(sources, bound)
 		}
-		prior, e := s.priorNeeds(ctx)
+		prior, e := s.priorNeeds(ctx, producer, c.ExternalID)
 		if e != nil {
 			return e
 		}
@@ -149,15 +150,16 @@ func (s *Service) Process(ctx context.Context, l Lease, f SourceFetcher, r Seman
 			}
 			return s.finishBatch(l, "paused_service", "model_unavailable", "")
 		}
-		decision := Evaluate(c, sources, assessment, now)
-		if e = s.checkpoint(l, producer, c, sources, assessment, prior, decision, now); e != nil {
+		verifiedAt := now.Add(time.Since(started))
+		decision := Evaluate(c, sources, assessment, verifiedAt)
+		if e = s.checkpoint(l, producer, c, sources, assessment, prior, decision, verifiedAt); e != nil {
 			return e
 		}
 	}
 	return s.finishBatch(l, "completed", "", b.RunReport.State)
 }
-func (s *Service) priorNeeds(ctx context.Context) ([]model.PriorNeed, error) {
-	rows, e := s.db.QueryContext(ctx, "SELECT id,task FROM needs WHERE task!='' ORDER BY id")
+func (s *Service) priorNeeds(ctx context.Context, producer, external string) ([]model.PriorNeed, error) {
+	rows, e := s.db.QueryContext(ctx, "SELECT id,task FROM needs WHERE task!='' AND id!=coalesce((SELECT need_id FROM need_aliases WHERE producer_id=? AND external_id=?),0) ORDER BY id", producer, external)
 	if e != nil {
 		return nil, e
 	}

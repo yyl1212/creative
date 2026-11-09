@@ -36,47 +36,58 @@ func (s *Service) checkpoint(l Lease, producer string, c candidate, sources []Bo
 		outcome = "needs_evidence"
 		d.Reasons = []string{"superseded_by_supplement"}
 	} else {
-		if existing == nil {
+		exclude := 0
+		protectCompleted := false
+		if existing != nil {
+			exclude = *existing
+			var status string
+			if e = tx.QueryRow("SELECT status FROM needs WHERE id=?", exclude).Scan(&status); e != nil {
+				return e
+			}
+			protectCompleted = status == "completed"
+		}
+		if !protectCompleted {
+			var duplicate *int
 			var found int
-			e = tx.QueryRow("SELECT id FROM needs WHERE task_fingerprint=? OR (task_key!='' AND task_key=?) ORDER BY id LIMIT 1", d.TaskFingerprint, d.TaskKey).Scan(&found)
+			e = tx.QueryRow("SELECT id FROM needs WHERE id!=? AND (task_fingerprint=? OR (task_key!='' AND task_key=?)) ORDER BY id LIMIT 1", exclude, d.TaskFingerprint, d.TaskKey).Scan(&found)
 			if e != nil && e != sql.ErrNoRows {
 				return e
 			}
 			if e == nil {
-				needID = &found
-				outcome = "duplicate"
+				duplicate = &found
 			}
-			if needID == nil && a.DuplicateNeedID != nil {
+			if duplicate == nil && a.DuplicateNeedID != nil {
 				for _, p := range prior {
-					if p.ID == *a.DuplicateNeedID {
+					if p.ID == *a.DuplicateNeedID && p.ID != exclude {
 						found = p.ID
-						needID = &found
-						outcome = "duplicate"
+						duplicate = &found
 						break
 					}
 				}
-				if needID == nil {
-					d.Outcome = "needs_evidence"
-					outcome = d.Outcome
+				if duplicate == nil {
+					outcome = "needs_evidence"
 					d.Reasons = append(d.Reasons, "unknown_duplicate_reference")
 				}
 			}
-			// 相同用户原文跨批重复使用，不能为另一个标题重新贡献资格。
-			if needID == nil {
+			// 同一原文不能通过更换标题或补证版本为其他需求重复贡献资格。
+			if duplicate == nil {
 				for _, ev := range d.Evidence {
 					if !ev.Valid {
 						continue
 					}
-					e = tx.QueryRow("SELECT need_id FROM need_sources WHERE fingerprint=? LIMIT 1", ev.Fingerprint).Scan(&found)
+					e = tx.QueryRow("SELECT need_id FROM need_sources WHERE fingerprint=? AND need_id!=? ORDER BY need_id LIMIT 1", ev.Fingerprint, exclude).Scan(&found)
 					if e != nil && e != sql.ErrNoRows {
 						return e
 					}
 					if e == nil {
-						needID = &found
-						outcome = "duplicate"
+						duplicate = &found
 						break
 					}
 				}
+			}
+			if duplicate != nil {
+				needID = duplicate
+				outcome = "duplicate"
 			}
 		}
 		completed := false

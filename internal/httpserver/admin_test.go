@@ -218,7 +218,7 @@ func TestInitialOverview(t *testing.T) {
 	if strings.Count(w.Body.String(), `data-count="0"`) != 4 || !strings.Contains(w.Body.String(), "未接入 / 未知") {
 		t.Fatal("initial state not real zero/unknown")
 	}
-	if _, err := db.Exec("INSERT INTO needs(status) VALUES ('qualified')"); err != nil {
+	if _, err := db.Exec("INSERT INTO needs(status,verified_at,valid_until,rules_version) VALUES ('qualified',unixepoch(),unixepoch()+3600,'strong-wtp.v1')"); err != nil {
 		t.Fatal(err)
 	}
 	w = b.request("GET", "/admin/", nil, nil)
