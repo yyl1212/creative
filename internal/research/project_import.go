@@ -311,9 +311,17 @@ func (s *Service) ImportProject(p auth.Producer, raw []byte) ([]byte, error) {
 		var owner bool
 		var state, status string
 		var oldVersion int
-		e = tx.QueryRow("SELECT n.version,n.status,coalesce(d.state,''),EXISTS(SELECT 1 FROM need_aliases a WHERE a.need_id=n.id AND a.producer_id=?) FROM needs n LEFT JOIN development_records d ON d.need_id=n.id WHERE n.id=?", p.ID, needID).Scan(&oldVersion, &status, &state, &owner)
-		if e != nil || !owner || oldVersion != review.Replaces.Version || status == "completed" || (state != "" && state != "approved" && state != "unverified" && state != "failed") {
-			return nil, fail(409, "project_version_conflict", "/project/replaces", "只能复核自有的待设计、失效或失败项目，且版本必须一致")
+		// 重复候选也会产生 alias；只有最初的创建/导入记录能证明归属。
+		e = tx.QueryRow(`SELECT n.version,n.status,coalesce(d.state,''),EXISTS(
+ SELECT 1 FROM research_batches b WHERE b.producer_id=? AND b.id=coalesce(
+  (SELECT i.batch_row FROM project_imports i WHERE i.need_id=n.id ORDER BY i.batch_row LIMIT 1),
+  (SELECT v.batch_row FROM need_verifications v WHERE v.need_id=n.id ORDER BY v.id LIMIT 1)))
+ FROM needs n LEFT JOIN development_records d ON d.need_id=n.id WHERE n.id=?`, p.ID, needID).Scan(&oldVersion, &status, &state, &owner)
+		if e != nil && e != sql.ErrNoRows {
+			return nil, e
+		}
+		if e == sql.ErrNoRows || !owner || oldVersion != review.Replaces.Version || status == "completed" || (state != "" && state != "approved" && state != "design_ready" && state != "unverified" && state != "failed") {
+			return nil, fail(409, "project_version_conflict", "/project/replaces", "只能复核自有的尚未开工、失效或失败项目，且版本必须一致")
 		}
 		version = oldVersion + 1
 	}

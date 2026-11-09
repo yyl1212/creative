@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/yyl1212/creative/internal/auth"
 )
 
 func projectInput(t *testing.T, s *Service, taskID, revision string) []byte {
@@ -254,5 +256,111 @@ func TestProjectConcurrentImportsRequireFreshCatalog(t *testing.T) {
 	db.QueryRow("SELECT count(*) FROM needs").Scan(&n)
 	if n != 1 {
 		t.Fatal("partial concurrent import")
+	}
+}
+
+func TestDuplicateAliasDoesNotGrantProjectOwnership(t *testing.T) {
+	s, db, owner, old, f, r := setupVerification(t)
+	_, err := s.ChangeTask(old.ID, old.Version, "cancel", "owner", "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := s.CreateProjectTask(owner.ID, []string{"export"}, []string{"en"}, 2, "owner", "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := s.ProjectCatalog(owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.ImportProject(owner, projectInput(t, s, task.ID, catalog.Revision)); err != nil {
+		t.Fatal(err)
+	}
+	a, err := auth.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, _, err := a.CreateProducer("other-agent", "owner", "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := s.CreateTask(other.ID, []string{"export"}, []string{"en"}, 3, "owner", "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	submitQualified(t, s, other, legacy.ID, "other-duplicate", "export")
+	processFixture(t, s, f, r)
+	var linked int
+	if err = db.QueryRow("SELECT need_id FROM need_aliases WHERE producer_id=? AND external_id='export'", other.ID).Scan(&linked); err != nil || linked != 1 {
+		t.Fatalf("duplicate not linked: %d %v", linked, err)
+	}
+	legacy, err = s.CurrentTask(other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.ChangeTask(legacy.ID, legacy.Version, "cancel", "owner", "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherTask, err := s.CreateProjectTask(other.ID, []string{"export"}, []string{"en"}, 2, "owner", "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err = s.ProjectCatalog(other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := change(t, projectInput(t, s, otherTask.ID, catalog.Revision), func(v map[string]any) {
+		v["project"].(map[string]any)["replaces"] = map[string]any{"need_id": 1, "version": 1}
+	})
+	if _, err = s.ImportProject(other, raw); err == nil {
+		t.Fatal("duplicate alias granted project ownership")
+	}
+	d, err := s.Development(1)
+	if err != nil || !strings.HasPrefix(d.ApprovedBy, "agent:"+owner.ID+":") {
+		t.Fatalf("original approval overwritten: %+v %v", d, err)
+	}
+}
+
+func TestExpiredDesignCanBeReassessed(t *testing.T) {
+	s, db, p, old, _, _ := setupVerification(t)
+	_, err := s.ChangeTask(old.ID, old.Version, "cancel", "owner", "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := s.CreateProjectTask(p.ID, []string{"export"}, []string{"en"}, 3, "owner", "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := s.ProjectCatalog(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.ImportProject(p, projectInput(t, s, task.ID, catalog.Revision)); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.ConfirmDesign(1, 1, designFixture(), "owner", "local"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec("UPDATE needs SET valid_until=1 WHERE id=1"); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Maintenance(time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	catalog, err = s.ProjectCatalog(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := change(t, projectInput(t, s, task.ID, catalog.Revision), func(v map[string]any) {
+		v["batch_id"] = "design-reassessment"
+		v["project"].(map[string]any)["replaces"] = map[string]any{"need_id": 1, "version": 2}
+	})
+	if _, err = s.ImportProject(p, raw); err != nil {
+		t.Fatal("unstarted design cannot be reassessed", err)
+	}
+	d, err := s.Development(1)
+	if err != nil || d.State != "approved" || d.Design.Spec != "" {
+		t.Fatalf("design was not reset for confirmation: %+v %v", d, err)
 	}
 }
