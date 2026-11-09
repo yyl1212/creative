@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 const html = path => readFileSync(`dist/${path}`, 'utf8');
 test('emptyCatalogAndRoutes', () => {
   assert.deepEqual(JSON.parse(readFileSync('src/data/products.json')), []);
@@ -40,4 +43,22 @@ test('publicConfigurationRejectsUnsafeDestinations', () => {
  for (const SITE_URL of ['http://example.com','https://user:private@example.com','https://example.com/path','javascript:alert(1)']) assert.throws(()=>readPublicConfig({SITE_URL}), {message:'SITE_URL 配置无效'});
  assert.throws(()=>readPublicConfig({ADMIN_URL:'https://user:private@example.com'}), {message:'ADMIN_URL 配置无效'});
  assert.throws(()=>readPublicConfig({FEEDBACK_EMAIL:'bad\r\n@example.com'}), {message:'FEEDBACK_EMAIL 配置无效'});
+});
+
+test('configuredEntrypointsPreserveEmailAddress', () => {
+ const directory = mkdtempSync(join(tmpdir(), 'creative-public-'));
+ const address = 'help#desk?reply@example.com';
+ try {
+   execFileSync('npm', ['run', 'build', '--', '--outDir', directory], {
+     timeout: 570000, stdio: 'pipe',
+     env: { ...process.env, ASTRO_TELEMETRY_DISABLED: '1', SITE_URL: 'https://creative.example', ADMIN_URL: 'https://admin.example/admin/login', FEEDBACK_EMAIL: address }
+   });
+   const feedback = readFileSync(join(directory, 'zh/feedback/index.html'), 'utf8');
+   assert.ok(feedback.includes('href="https://admin.example/admin/login"'));
+   const link = feedback.match(/href="(mailto:[^"]+)"/)[1];
+   const parsed = new URL(link);
+   assert.equal(decodeURIComponent(parsed.pathname), address);
+   assert.equal(parsed.hash, ''); assert.equal(parsed.search, '');
+   assert.ok(feedback.includes('href="https://creative.example/zh/feedback/"'));
+ } finally { rmSync(directory, { recursive: true, force: true }); }
 });
