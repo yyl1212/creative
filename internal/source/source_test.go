@@ -59,7 +59,7 @@ func TestSafeSourceFetch(t *testing.T) {
 
 func TestQuoteAuthorBinding(t *testing.T) {
 	html := `<article><a rel="author" href="/u/alice">Alice</a><time datetime="2026-10-01T00:00:00Z"></time><p>I will pay USD 20.</p><blockquote>Copied payment.</blockquote><div hidden>Hidden payment.</div><script>Script payment.</script><article><a rel="author" href="/u/bob">Bob</a><time datetime="2026-10-02T00:00:00Z"></time>Bob pays.</article></article>`
-	d, err := parse([]byte(html), "https://example.com/post")
+	d, err := Extract([]byte(html), "https://example.com/post")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestQuoteAuthorBinding(t *testing.T) {
 			t.Fatal("bound " + q)
 		}
 	}
-	d, _ = parse([]byte(`<article><a rel="author">A</a><a rel="author">B</a><time datetime="2026-10-01T00:00:00Z"></time>ambiguous</article>`), "https://example.com")
+	d, _ = Extract([]byte(`<article><a rel="author">A</a><a rel="author">B</a><time datetime="2026-10-01T00:00:00Z"></time>ambiguous</article>`), "https://example.com")
 	if _, err = d.Bind("ambiguous"); err == nil {
 		t.Fatal("ambiguous authors accepted")
 	}

@@ -87,7 +87,7 @@ func visible(n *html.Node, root *html.Node) string {
 	}
 	return b.String()
 }
-func parse(raw []byte, finalURL string) (Document, error) {
+func Extract(raw []byte, finalURL string) (Document, error) {
 	d := Document{URL: finalURL, Hash: fmt.Sprintf("%x", sha256.Sum256(raw)), FetchedAt: time.Now().UTC(), Raw: raw}
 	u, e := url.Parse(finalURL)
 	if e != nil {

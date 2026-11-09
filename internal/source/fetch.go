@@ -130,7 +130,7 @@ func (f *Fetcher) Fetch(ctx context.Context, raw string) (Document, error) {
 		if e != nil || len(b) > 2<<20 {
 			return zero, ErrUnavailable
 		}
-		doc, e := parse(b, resp.Request.URL.String())
+		doc, e := Extract(b, resp.Request.URL.String())
 		if e != nil {
 			return zero, fmt.Errorf("%w: unsupported document", ErrUnavailable)
 		}

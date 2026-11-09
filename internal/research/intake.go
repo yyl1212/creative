@@ -56,31 +56,6 @@ func New(db *sql.DB) (*Service, error) {
 	return &Service{db: db, schema: schema}, nil
 }
 
-type batch struct {
-	SchemaVersion string      `json:"schema_version"`
-	RulesVersion  string      `json:"rules_version"`
-	TaskID        string      `json:"task_id"`
-	BatchID       string      `json:"batch_id"`
-	RunID         string      `json:"run_id"`
-	Candidates    []candidate `json:"candidates"`
-	RunReport     struct {
-		Usage []struct {
-			ID string `json:"usage_id"`
-		}
-	} `json:"run_report"`
-}
-type candidate struct {
-	ExternalID string `json:"external_id"`
-	Title      string `json:"title"`
-	Evidence   []struct {
-		ID  string `json:"evidence_id"`
-		URL string `json:"url"`
-	} `json:"evidence"`
-	Alternatives []struct {
-		URL string `json:"url"`
-	} `json:"alternatives"`
-}
-
 func (s *Service) parse(raw []byte) (batch, error) {
 	var b batch
 	if len(raw) > 1<<20 {
