@@ -20,7 +20,7 @@
     <section class="metrics" aria-label="实际数量">
       <article><h2>需求总数</h2><strong data-count="{{.Needs}}">{{.Needs}}</strong><p>全部已记录需求</p></article>
       <article><h2>合格需求</h2><strong data-count="{{.Qualified}}">{{.Qualified}}</strong><p>已核验且资格未过期</p></article>
-      <article><h2>已完成需求</h2><strong data-count="{{.Completed}}">{{.Completed}}</strong><p>标记为完成的需求</p></article>
+      <article><h2>已完成需求</h2><strong data-count="{{.Completed}}">{{.Completed}}</strong><p>已通过生产核验的需求</p></article>
       <article><h2>产品数量</h2><strong data-count="{{.Products}}">{{.Products}}</strong><p>公开清单中的产品</p></article>
     </section>
     <section class="panel" aria-labelledby="service-title">
@@ -28,7 +28,7 @@
       <div class="status-row"><div><h3>自动搜寻与模型</h3><p>搜寻任务和模型服务的连接状态</p></div><span class="status">未接入 / 未知</span></div>
       <div class="status-row"><div><h3>访问量、收入与费用</h3><p>费用记录可在「费用与用量」查看，访问量与收入尚未接入</p></div><span class="status">未接入 / 未知</span></div>
     </section>
-    <p class="footnote dashboard-note">现已提供原文核验、需求池和费用记录。开发交接与发布审核将在后续迭代开放。</p>
+    <p class="footnote dashboard-note">从原文核验与立项复核开始，在开发工作区确认方案并登记交付。生产发布需通过受控核验后才计入完成。</p>
   </main>
 </body>
 </html>

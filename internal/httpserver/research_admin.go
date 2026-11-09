@@ -11,6 +11,7 @@ import (
 )
 
 func (a *App) researchRoutes(mux *http.ServeMux) {
+	a.developmentRoutes(mux)
 	mux.HandleFunc("GET /admin/needs", a.needsPage)
 	mux.HandleFunc("GET /admin/needs/{id}", a.needPage)
 	mux.HandleFunc("GET /admin/usage", a.usagePage)
@@ -65,6 +66,22 @@ func stateLabel(state string) string {
 		return "验证中"
 	case "completed":
 		return "已验证"
+	case "approved":
+		return "已批准立项"
+	case "design_ready":
+		return "方案已确认"
+	case "developing":
+		return "开发中"
+	case "review_ready":
+		return "待上线核验"
+	case "launched":
+		return "已上线"
+	case "failed":
+		return "核验失败"
+	case "rolled_back":
+		return "已回滚"
+	case "unverified":
+		return "待重新核验"
 	}
 	return "未知"
 }
