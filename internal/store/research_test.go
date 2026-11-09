@@ -38,7 +38,7 @@ func TestResearchMigrationPreservesExistingData(t *testing.T) {
 	if err = db.QueryRow("SELECT count(*) FROM needs").Scan(&count); err != nil || count != 1 {
 		t.Fatalf("existing data lost: %v", err)
 	}
-	if err = db.QueryRow("SELECT count(*) FROM schema_migrations").Scan(&count); err != nil || count != 3 {
+	if err = db.QueryRow("SELECT count(*) FROM schema_migrations").Scan(&count); err != nil || count != 4 {
 		t.Fatalf("research migration not applied: count=%d err=%v", count, err)
 	}
 	if err = db.QueryRow("SELECT count(*) FROM research_batches").Scan(&count); err != nil || count != 0 {
