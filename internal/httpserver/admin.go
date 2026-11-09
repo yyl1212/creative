@@ -21,15 +21,17 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/gorilla/csrf"
 	"github.com/yyl1212/creative/internal/auth"
+	"github.com/yyl1212/creative/internal/research"
 	adminweb "github.com/yyl1212/creative/web/admin"
 )
 
 type Config struct {
-	DB           *sql.DB
-	Origin       string
-	CSRFKey      []byte
-	ProductsPath string
-	TrustedProxy string
+	DB             *sql.DB
+	Origin         string
+	ResearchOrigin string
+	CSRFKey        []byte
+	ProductsPath   string
+	TrustedProxy   string
 }
 type App struct {
 	Auth         *auth.Service
@@ -44,25 +46,40 @@ type App struct {
 	handler      http.Handler
 	sessionStore *sqlite3store.SQLite3Store
 	closeOnce    sync.Once
+	research     *research.Service
+	apiHost      string
+	apiSlots     chan struct{}
 }
 type view struct {
-	CSRF      template.HTML
-	Error     string
-	Username  string
-	Needs     int
-	Qualified int
-	Completed int
-	Products  int
+	CSRF       template.HTML
+	Error      string
+	Username   string
+	Needs      int
+	Qualified  int
+	Completed  int
+	Products   int
+	Page       string
+	Secret     string
+	APIEnabled bool
+	Producers  []auth.Producer
+	Tasks      []research.Task
+	Batches    []research.BatchSummary
+	Batch      *research.BatchDetail
+	NextBefore int
 }
 
 func New(cfg Config) (*App, error) {
-	u, err := url.Parse(cfg.Origin)
-	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
-		return nil, errors.New("CREATIVE_ADMIN_ORIGIN 配置无效")
+	u, err := parseOrigin(cfg.Origin)
+	if err != nil {
+		return nil, errors.New("CREATIVE_ADMIN_ORIGIN 配置无效；非本机必须 HTTPS")
 	}
-	local := u.Hostname() == "localhost" || net.ParseIP(u.Hostname()) != nil && net.ParseIP(u.Hostname()).IsLoopback()
-	if u.Scheme != "https" && !(u.Scheme == "http" && local) {
-		return nil, errors.New("管理入口需要 HTTPS；仅本机允许 HTTP")
+	apiHost := ""
+	if cfg.ResearchOrigin != "" {
+		apiURL, err := parseOrigin(cfg.ResearchOrigin)
+		if err != nil || apiURL.Host == u.Host {
+			return nil, errors.New("CREATIVE_RESEARCH_ORIGIN 必须是独立有效 Host，非本机必须 HTTPS")
+		}
+		apiHost = apiURL.Host
 	}
 	if len(cfg.CSRFKey) != 32 {
 		return nil, errors.New("CREATIVE_CSRF_KEY 必须为 32 字节密钥")
@@ -82,11 +99,15 @@ func New(cfg Config) (*App, error) {
 	if err = json.Unmarshal(products, &catalog); err != nil || catalog == nil {
 		return nil, errors.New("公开产品清单必须为 JSON 数组")
 	}
-	templates, err := template.ParseFS(adminweb.Files, "templates/*.html")
+	templates, err := template.New("admin").Funcs(template.FuncMap{"stateLabel": stateLabel}).ParseFS(adminweb.Files, "templates/*.html")
 	if err != nil {
 		return nil, err
 	}
 	service, err := auth.New(cfg.DB)
+	if err != nil {
+		return nil, err
+	}
+	researchService, err := research.New(cfg.DB)
 	if err != nil {
 		return nil, err
 	}
@@ -108,12 +129,13 @@ func New(cfg Config) (*App, error) {
 	sessions.ErrorFunc = func(w http.ResponseWriter, r *http.Request, err error) {
 		http.Error(w, "会话服务暂不可用", http.StatusInternalServerError)
 	}
-	a := &App{Auth: service, Sessions: sessions, db: cfg.DB, host: u.Host, origin: u.Scheme + "://" + u.Host, secure: u.Scheme == "https", proxy: proxy, productCount: len(catalog), templates: templates, sessionStore: sessionStore}
+	a := &App{Auth: service, Sessions: sessions, db: cfg.DB, host: u.Host, origin: u.Scheme + "://" + u.Host, secure: u.Scheme == "https", proxy: proxy, productCount: len(catalog), templates: templates, sessionStore: sessionStore, research: researchService, apiHost: apiHost, apiSlots: make(chan struct{}, 8)}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /admin/login", a.loginPage)
 	mux.HandleFunc("POST /admin/login", a.login)
 	mux.HandleFunc("GET /admin/{$}", a.overview)
 	mux.HandleFunc("POST /admin/logout", a.logout)
+	a.researchRoutes(mux)
 	css, _ := adminweb.Files.ReadFile("static/admin.css")
 	mux.HandleFunc("GET /admin/static/admin.css", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")
@@ -130,6 +152,14 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Referrer-Policy", "same-origin")
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+	if a.apiHost != "" && strings.HasPrefix(r.URL.Path, "/api/research/v1/") {
+		if r.Host != a.apiHost {
+			researchError(w, &research.Error{Status: 421, Code: "host_mismatch", Field: "/", Message: "API 主机不匹配"})
+			return
+		}
+		a.serveResearch(w, r)
+		return
+	}
 	if r.Host != a.host {
 		http.Error(w, "管理主机不匹配", http.StatusMisdirectedRequest)
 		return
@@ -233,7 +263,7 @@ func (a *App) overview(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	data := view{Username: user.Username, Products: a.productCount}
+	data := view{Username: user.Username, Products: a.productCount, Page: "overview"}
 	err := a.db.QueryRow("SELECT count(*),coalesce(sum(status='qualified'),0),coalesce(sum(status='completed'),0) FROM needs").Scan(&data.Needs, &data.Qualified, &data.Completed)
 	if err != nil {
 		http.Error(w, "数据暂不可用", 500)
@@ -257,3 +287,15 @@ func (a *App) logout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
 }
 func (a *App) String() string { return fmt.Sprintf("Creative 管理入口 %s/admin/", a.origin) }
+
+func parseOrigin(raw string) (*url.URL, error) {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
+		return nil, errors.New("invalid origin")
+	}
+	local := u.Hostname() == "localhost" || net.ParseIP(u.Hostname()) != nil && net.ParseIP(u.Hostname()).IsLoopback()
+	if u.Scheme != "https" && !(u.Scheme == "http" && local) {
+		return nil, errors.New("https required")
+	}
+	return u, nil
+}

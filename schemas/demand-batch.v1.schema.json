@@ -1,0 +1,479 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Creative 候选批次 v1",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "creative.demand-batch.v1"
+    },
+    "rules_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+    },
+    "batch_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+    },
+    "submitted_at": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40,
+      "format": "date-time"
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "external_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "language": {
+            "enum": [
+              "zh",
+              "en"
+            ]
+          },
+          "target_user": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "job_to_be_done": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000
+          },
+          "constraints": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "maxItems": 30
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "evidence_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+                },
+                "url": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2048,
+                  "format": "uri",
+                  "pattern": "^https?://"
+                },
+                "author_ref": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "published_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "minLength": 1,
+                  "maxLength": 40,
+                  "format": "date-time"
+                },
+                "observed_at": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40,
+                  "format": "date-time"
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 12000
+                },
+                "signal": {
+                  "enum": [
+                    "explicit_wtp",
+                    "currently_paying",
+                    "pain_only",
+                    "unclear"
+                  ]
+                },
+                "price": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "amount": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "minLength": 1,
+                      "maxLength": 40,
+                      "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+                    },
+                    "currency": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "minLength": 1,
+                      "maxLength": 3,
+                      "pattern": "^[A-Z]{3}$"
+                    },
+                    "unit": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "minLength": 1,
+                      "maxLength": 80
+                    }
+                  },
+                  "required": [
+                    "amount",
+                    "currency",
+                    "unit"
+                  ],
+                  "additionalProperties": false
+                },
+                "conditions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  },
+                  "maxItems": 30
+                },
+                "unmet_need": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4000
+                }
+              },
+              "required": [
+                "evidence_id",
+                "url",
+                "author_ref",
+                "published_at",
+                "observed_at",
+                "quote",
+                "signal",
+                "price",
+                "conditions",
+                "unmet_need"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 50
+          },
+          "alternatives": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                },
+                "url": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2048,
+                  "format": "uri",
+                  "pattern": "^https?://"
+                },
+                "checked_at": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40,
+                  "format": "date-time"
+                },
+                "method": {
+                  "enum": [
+                    "research_only",
+                    "hands_on"
+                  ]
+                },
+                "limitations": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4000
+                },
+                "basis": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4000
+                }
+              },
+              "required": [
+                "name",
+                "url",
+                "checked_at",
+                "method",
+                "limitations",
+                "basis"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 30
+          },
+          "monetization_proposal": {
+            "enum": [
+              "free",
+              "paid",
+              "undecided"
+            ]
+          },
+          "unknowns": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "maxItems": 50
+          }
+        },
+        "required": [
+          "external_id",
+          "title",
+          "language",
+          "target_user",
+          "job_to_be_done",
+          "constraints",
+          "evidence",
+          "alternatives",
+          "monetization_proposal",
+          "unknowns"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 20
+    },
+    "run_report": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "enum": [
+            "submitted",
+            "waiting_for_signals",
+            "paused_service"
+          ]
+        },
+        "sources_checked": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "maxItems": 200
+        },
+        "unresolved": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "maxItems": 100
+        },
+        "resume_hint": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "usage": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "usage_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+              },
+              "provider": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "model": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1,
+                "maxLength": 160
+              },
+              "reported_cost": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1,
+                "maxLength": 40,
+                "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+              },
+              "currency": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1,
+                "maxLength": 3,
+                "pattern": "^[A-Z]{3}$"
+              },
+              "billing_reference": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "cost_status": {
+                "enum": [
+                  "reported",
+                  "unknown"
+                ]
+              }
+            },
+            "required": [
+              "usage_id",
+              "provider",
+              "model",
+              "reported_cost",
+              "currency",
+              "billing_reference",
+              "cost_status"
+            ],
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "model": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "then": {
+                  "oneOf": [
+                    {
+                      "properties": {
+                        "provider": {
+                          "const": "openai"
+                        },
+                        "model": {
+                          "pattern": "^(gpt-|o[1-9]|chatgpt-)"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "provider": {
+                          "const": "deepseek"
+                        },
+                        "model": {
+                          "pattern": "^deepseek-"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "cost_status": {
+                      "const": "unknown"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "reported_cost": {
+                      "type": "null"
+                    }
+                  }
+                },
+                "else": {
+                  "properties": {
+                    "reported_cost": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40,
+                      "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "maxItems": 200
+        }
+      },
+      "required": [
+        "state",
+        "sources_checked",
+        "unresolved",
+        "resume_hint",
+        "usage"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "rules_version",
+    "task_id",
+    "batch_id",
+    "run_id",
+    "submitted_at",
+    "candidates",
+    "run_report"
+  ],
+  "additionalProperties": false
+}

@@ -30,7 +30,7 @@ func run() error {
 		return err
 	}
 	defer db.Close()
-	app, err := httpserver.New(httpserver.Config{DB: db, Origin: env("CREATIVE_ADMIN_ORIGIN", "http://localhost:8080"), CSRFKey: key, ProductsPath: env("CREATIVE_PRODUCTS", "src/data/products.json"), TrustedProxy: os.Getenv("CREATIVE_TRUSTED_PROXY")})
+	app, err := httpserver.New(httpserver.Config{DB: db, Origin: env("CREATIVE_ADMIN_ORIGIN", "http://localhost:8080"), CSRFKey: key, ResearchOrigin: os.Getenv("CREATIVE_RESEARCH_ORIGIN"), ProductsPath: env("CREATIVE_PRODUCTS", "src/data/products.json"), TrustedProxy: os.Getenv("CREATIVE_TRUSTED_PROXY")})
 	if err != nil {
 		return err
 	}

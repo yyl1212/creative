@@ -1,0 +1,42 @@
+{
+  "schema_version": "creative.demand-batch.v1",
+  "rules_version": "strong-wtp.v1",
+  "task_id": "task-example",
+  "batch_id": "batch-example-001",
+  "run_id": "run-example",
+  "submitted_at": "2026-11-08T08:30:00+08:00",
+  "candidates": [
+    {
+      "external_id": "need-example-001",
+      "title": "商品表格模板转换",
+      "language": "zh",
+      "target_user": "需要跨平台整理商品资料的卖家",
+      "job_to_be_done": "把现有商品表转换为目标模板并报告字段错误",
+      "constraints": ["能够自助处理并下载结果"],
+      "evidence": [
+        {
+          "evidence_id": "ev-example-1",
+          "url": "https://example.org/example-post",
+          "author_ref": "example-author",
+          "published_at": "2026-11-01T10:00:00+08:00",
+          "observed_at": "2026-11-08T08:00:00+08:00",
+          "quote": "模拟文本：若能准确转换所需模板，我愿意每次付20元人民币。",
+          "signal": "explicit_wtp",
+          "price": {"amount": "20.00", "currency": "CNY", "unit": "per_job"},
+          "conditions": ["准确支持指定模板"],
+          "unmet_need": "现有方案不能覆盖所需模板"
+        }
+      ],
+      "alternatives": [],
+      "monetization_proposal": "undecided",
+      "unknowns": ["缺少其他独立用户及来源", "尚未完成竞品实测"]
+    }
+  ],
+  "run_report": {
+    "state": "submitted",
+    "sources_checked": ["example.org"],
+    "unresolved": ["需要补充独立付费证据"],
+    "resume_hint": "等待网站校验结果",
+    "usage": []
+  }
+}

@@ -15,6 +15,7 @@
     <div class="identity"><span class="username">{{.Username}}</span><form method="post" action="/admin/logout">{{.CSRF}}<button class="quiet" type="submit">退出登录</button></form></div>
   </div></header>
   <main id="main" class="dashboard" tabindex="-1">
+    {{template "research-nav" .}}
     <div class="page-heading"><h1>总览</h1><p>查看需求与产品的实际进展。</p></div>
     <section class="metrics" aria-label="实际数量">
       <article><h2>需求总数</h2><strong data-count="{{.Needs}}">{{.Needs}}</strong><p>全部已记录需求</p></article>
@@ -27,7 +28,7 @@
       <div class="status-row"><div><h3>自动搜寻与模型</h3><p>搜寻任务和模型服务的连接状态</p></div><span class="status">未接入 / 未知</span></div>
       <div class="status-row"><div><h3>访问量、收入与费用</h3><p>产品上线后逐步接入运营数据</p></div><span class="status">未接入 / 未知</span></div>
     </section>
-    <p class="footnote dashboard-note">当前提供登录和状态查看。需求接收、核验与开发交接将在后续迭代开放。</p>
+    <p class="footnote dashboard-note">现已提供搜寻任务、执行端和批次接收管理。证据核验与开发交接将在后续迭代开放。</p>
   </main>
 </body>
 </html>
