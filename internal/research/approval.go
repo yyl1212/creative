@@ -251,6 +251,10 @@ func (s *Service) ApproveNeed(id, version int, a Approval, actor, source string)
 		return e
 	}
 	defer tx.Rollback()
+	// 先取得写锁，避免两个读取快照同时升级写事务时返回 SQLITE_BUSY。
+	if _, e = tx.Exec("UPDATE needs SET version=version WHERE id=?", id); e != nil {
+		return e
+	}
 	n, e := currentQualified(tx, id, version, a.VerificationID)
 	if e != nil {
 		return e

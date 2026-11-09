@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/yyl1212/creative/internal/store"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -99,6 +101,57 @@ func TestApprovalVersionConflict(t *testing.T) {
 	db.QueryRow("SELECT count(*) FROM audit_events WHERE action='need_approved'").Scan(&count)
 	if count != 1 {
 		t.Fatal("duplicate approval audited as success")
+	}
+}
+
+func TestApprovalConcurrentVersions(t *testing.T) {
+	for attempt := 0; attempt < 6; attempt++ {
+		s, db, n, a := approvedFixture(t)
+		var seq int
+		var name, path string
+		if e := db.QueryRow("PRAGMA database_list").Scan(&seq, &name, &path); e != nil {
+			t.Fatal(e)
+		}
+		second, e := store.Open(path)
+		if e != nil {
+			t.Fatal(e)
+		}
+		other, e := New(second)
+		if e != nil {
+			second.Close()
+			t.Fatal(e)
+		}
+		start := make(chan struct{})
+		results := make(chan error, 2)
+		var wg sync.WaitGroup
+		for _, service := range []*Service{s, other} {
+			wg.Go(func() { <-start; results <- service.ApproveNeed(1, n.Version, a, "owner", "local") })
+		}
+		close(start)
+		wg.Wait()
+		close(results)
+		second.Close()
+		successes := 0
+		for e := range results {
+			if e == nil {
+				successes++
+			} else {
+				code(t, e, 409)
+			}
+		}
+		if successes != 1 {
+			t.Fatal("concurrent approvals", successes)
+		}
+	}
+}
+
+func TestDesignProductionOrigin(t *testing.T) {
+	for _, origin := range []string{"https://example.org:8443", "https://example.org?", "https://example.org#", "https://127.0.0.1", "https://192.0.2.1"} {
+		d := designFixture()
+		d.ProductionOrigin = origin
+		if e := validDesign(d); e == nil {
+			t.Errorf("invalid production origin accepted: %s", origin)
+		}
 	}
 }
 

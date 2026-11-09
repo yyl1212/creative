@@ -3,7 +3,7 @@ package research
 import (
 	"database/sql"
 	"encoding/json"
-	"net/url"
+	"github.com/yyl1212/creative/internal/release"
 	"regexp"
 	"strings"
 	"time"
@@ -95,6 +95,9 @@ func (s *Service) Developments() ([]Development, error) {
 	return out, rows.Err()
 }
 func developmentForUpdate(tx *sql.Tx, id, version int) (Development, Need, error) {
+	if e := lockDevelopment(tx, id); e != nil {
+		return Development{}, Need{}, e
+	}
 	d, e := scanDevelopment(tx.QueryRow("SELECT "+developmentColumns+" FROM development_records d JOIN needs n ON n.id=d.need_id WHERE d.need_id=?", id))
 	if e == sql.ErrNoRows {
 		e = fail(404, "development_not_found", "/id", "尚未批准该需求立项")
@@ -109,12 +112,16 @@ func developmentForUpdate(tx *sql.Tx, id, version int) (Development, Need, error
 	return d, n, e
 }
 
+func lockDevelopment(tx *sql.Tx, id int) error {
+	_, e := tx.Exec("UPDATE development_records SET version=version WHERE need_id=?", id)
+	return e
+}
+
 func validDesign(d Design) error {
 	if len(jsonText(d)) > 32<<10 || secretPattern.MatchString(jsonText(d)) {
 		return lifecycleInput("设计过大或疑似包含凭据")
 	}
-	u, err := url.Parse(d.ProductionOrigin)
-	if err != nil || !publicURL(d.ProductionOrigin) || u.Scheme != "https" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || !regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`).MatchString(d.ProductSlug) {
+	if release.ValidateProductionOrigin(d.ProductionOrigin) != nil || !regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`).MatchString(d.ProductSlug) {
 		return lifecycleInput("请明确产品 slug 与不含路径的公网 HTTPS 生产 origin")
 	}
 	for _, v := range []string{d.Spec, d.Architecture, d.Plan} {
