@@ -11,6 +11,7 @@ import (
 	"net/netip"
 	"net/url"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -240,6 +241,20 @@ func (s *Service) Receive(p auth.Producer, raw []byte) ([]byte, error) {
 			return nil, err
 		}
 	}
+	for _, c := range b.Candidates {
+		if _, err = tx.Exec("UPDATE needs SET status='pending',valid_until=0,version=version+1 WHERE id=(SELECT need_id FROM need_aliases WHERE producer_id=? AND external_id=?) AND status!='completed'", p.ID, c.ExternalID); err != nil {
+			return nil, err
+		}
+		if _, err = tx.Exec("INSERT INTO need_aliases(producer_id,external_id,latest_batch) VALUES (?,?,?) ON CONFLICT(producer_id,external_id) DO UPDATE SET latest_batch=excluded.latest_batch", p.ID, c.ExternalID, id); err != nil {
+			return nil, err
+		}
+	}
+	if err = recordExternalUsage(tx, p.ID, b.RunReport.Usage); err != nil {
+		return nil, err
+	}
+	if err = recomputeTasks(tx, time.Now()); err != nil {
+		return nil, err
+	}
 	return reception, tx.Commit()
 }
 
@@ -282,8 +297,14 @@ func (s *Service) Receipt(producer auth.Producer, batchID string) (Receipt, erro
 	if err != nil {
 		return receipt, err
 	}
+	if err = recomputeTasks(tx, time.Now()); err != nil {
+		return receipt, err
+	}
 	task, err := scanTask(tx.QueryRow("SELECT "+taskColumns+" FROM research_tasks WHERE id=?", taskID))
 	if err != nil {
+		return receipt, err
+	}
+	if err = hydrateTask(tx, task, time.Now()); err != nil {
 		return receipt, err
 	}
 	receipt.TargetCount = task.TargetCount
@@ -292,15 +313,22 @@ func (s *Service) Receipt(producer auth.Producer, batchID string) (Receipt, erro
 	receipt.TaskState = task.State
 	receipt.ShouldContinue = task.ShouldContinue
 	receipt.Results = []Result{}
-	rows, err := tx.Query("SELECT external_id FROM research_candidates WHERE batch_row=? ORDER BY ordinal", rowID)
+	rows, err := tx.Query("SELECT external_id,result FROM research_candidates WHERE batch_row=? ORDER BY ordinal", rowID)
 	if err != nil {
 		return receipt, err
 	}
 	for rows.Next() {
 		r := Result{ValidationState: "pending_validation", ReasonCodes: []string{}, Issues: []string{}, Suggestions: []string{"等待网站原文核验；接收成功不代表证据合格"}}
-		if err = rows.Scan(&r.ExternalID); err != nil {
+		var stored *string
+		if err = rows.Scan(&r.ExternalID, &stored); err != nil {
 			rows.Close()
 			return receipt, err
+		}
+		if stored != nil {
+			if err = json.Unmarshal([]byte(*stored), &r); err != nil {
+				rows.Close()
+				return receipt, err
+			}
 		}
 		receipt.Results = append(receipt.Results, r)
 	}
