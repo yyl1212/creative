@@ -1,0 +1,40 @@
+name: 迭代验证
+on:
+  push:
+    branches: [master, 'feat/**', 'codex/**']
+  pull_request:
+    branches: [master]
+permissions:
+  contents: read
+jobs:
+  public:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ASTRO_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: timeout 570s npm ci
+      - run: timeout 570s npm run build
+        env:
+          DEEPSEEK_API_KEY: creative-test-sentinel-only
+          OPENAI_API_KEY: creative-openai-sentinel-only
+      - run: timeout 570s npm test
+  admin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CGO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: timeout 570s go test ./... -count=1 -timeout 9m
+      - run: timeout 570s go build ./cmd/creative ./cmd/creative-admin
+      - run: timeout 570s go vet ./...

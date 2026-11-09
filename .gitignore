@@ -1,4 +1,9 @@
 .env
 .env.*
 !.env.example
-data/
+/data/
+node_modules/
+dist/
+.astro/
+bin/
+.superpowers/

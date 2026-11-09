@@ -1,0 +1,7 @@
+---
+import Base from '../../../layouts/Base.astro';
+import { locales, copy, type Locale } from '../../../lib/i18n';
+export function getStaticPaths() { return locales.map(lang => ({ params: { lang } })); }
+const lang = Astro.params.lang as Locale; const c = copy[lang];
+---
+<Base title={c.tools} lang={lang} path="tools/" noindex><section class="catalog"><div class="page-head"><div class="eyebrow">CREATIVE / {c.tools}</div><h1>{c.tools}</h1><p>{c.detail}</p></div><div class="empty"><div class="empty-icon" aria-hidden="true">＋</div><div><h2>{c.empty}</h2><p>{c.preparing}</p></div></div></section></Base>
