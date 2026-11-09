@@ -1,0 +1,19 @@
+{
+  "version": "creative.research-task.v1",
+  "enabled": false,
+  "prompt": "prompts/research-task.v1.md",
+  "schema": "schemas/demand-batch.v1.schema.json",
+  "supported_rules_versions": ["strong-wtp.v1"],
+  "allowed_model_providers": ["openai", "deepseek"],
+  "schedule": {"platform": "codex-local", "timezone": "Asia/Shanghai", "daily_at": "08:10", "model": "gpt-6.1-sol", "reasoning_effort": "high", "overlap_policy": "platform_serial_required"},
+  "transport": {"script": "scripts/research_transport.py", "binding_file": null},
+  "artifacts_dir": null,
+  "activation_checks": {
+    "fixed_destination_http": false,
+    "cross_run_recovery": false,
+    "platform_serial_execution": false,
+    "public_source_tools": false,
+    "real_round_trip": false,
+    "real_call_authorized": false
+  }
+}
