@@ -19,6 +19,7 @@ func reportFixture(t *testing.T) (*Service, *sql.DB, auth.Producer, *Task, []byt
 		t.Fatal(e)
 	}
 	raw := change(t, fixture(t, task.ID), func(v map[string]any) {
+		v["rules_version"] = task.RulesVersion
 		v["candidates"] = []any{}
 		report := v["run_report"].(map[string]any)
 		report["usage"] = []any{map[string]any{"usage_id": "report-charge", "provider": "deepseek", "model": "deepseek-fixture", "reported_cost": nil, "currency": nil, "billing_reference": nil, "cost_status": "unknown"}}

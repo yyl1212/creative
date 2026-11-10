@@ -26,7 +26,12 @@ type candidate struct {
 	Constraints  []string   `json:"constraints"`
 	Evidence     []Evidence `json:"evidence"`
 	Alternatives []struct {
-		URL string `json:"url"`
+		Name        string `json:"name"`
+		URL         string `json:"url"`
+		CheckedAt   string `json:"checked_at"`
+		Method      string `json:"method"`
+		Limitations string `json:"limitations"`
+		Basis       string `json:"basis"`
 	} `json:"alternatives"`
 	Monetization string   `json:"monetization_proposal"`
 	Unknowns     []string `json:"unknowns"`
@@ -37,16 +42,18 @@ type Price struct {
 	Unit     *string `json:"unit"`
 }
 type Evidence struct {
-	ID          string   `json:"evidence_id"`
-	URL         string   `json:"url"`
-	AuthorRef   *string  `json:"author_ref"`
-	PublishedAt *string  `json:"published_at"`
-	ObservedAt  string   `json:"observed_at"`
-	Quote       string   `json:"quote"`
-	Signal      string   `json:"signal"`
-	Price       *Price   `json:"price"`
-	Conditions  []string `json:"conditions"`
-	UnmetNeed   string   `json:"unmet_need"`
+	ID            string   `json:"evidence_id"`
+	URL           string   `json:"url"`
+	AuthorRef     *string  `json:"author_ref"`
+	PublishedAt   *string  `json:"published_at"`
+	PublishedDate *string  `json:"published_date,omitempty"`
+	DiscussionURL string   `json:"discussion_url,omitempty"`
+	ObservedAt    string   `json:"observed_at"`
+	Quote         string   `json:"quote"`
+	Signal        string   `json:"signal"`
+	Price         *Price   `json:"price"`
+	Conditions    []string `json:"conditions"`
+	UnmetNeed     string   `json:"unmet_need"`
 }
 type ExternalUsage = usage.External
 

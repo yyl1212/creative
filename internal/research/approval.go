@@ -81,6 +81,9 @@ func amount(value string) (*big.Rat, error) {
 	return v, nil
 }
 func (a Approval) Margin() string {
+	if a.Currency == "" {
+		return "未知"
+	}
 	p, e := amount(a.Price)
 	if e != nil {
 		return "未知"
@@ -103,6 +106,10 @@ func (a Approval) Margin() string {
 }
 
 func validApproval(a Approval) error {
+	return validApprovalForRules(a, rulesVersion)
+}
+func validApprovalForRules(a Approval, rule string) error {
+	optionalAmounts := rule == opportunityRulesVersion
 	if len(jsonText(a)) > 64<<10 || secretPattern.MatchString(jsonText(a)) {
 		return lifecycleInput("材料过大或疑似包含凭据；只填写业务资料")
 	}
@@ -114,35 +121,35 @@ func validApproval(a Approval) error {
 	if a.Monetization != "free" && a.Monetization != "paid" {
 		return lifecycleInput("请选择免费或付费产品")
 	}
-	if !regexp.MustCompile(`^[A-Z]{3}$`).MatchString(a.Currency) {
+	if (!optionalAmounts || a.Currency != "") && !regexp.MustCompile(`^[A-Z]{3}$`).MatchString(a.Currency) {
 		return lifecycleInput("请填写三位大写币种")
 	}
 	p, e := amount(a.Price)
-	if e != nil {
+	if e != nil && !(optionalAmounts && a.Price == "") {
 		return e
 	}
-	if _, e = amount(a.UnitCost); e != nil {
+	if _, e = amount(a.UnitCost); e != nil && !(optionalAmounts && a.UnitCost == "") {
 		return e
 	}
 	fee, e := amount(a.PaymentFee)
-	if e != nil {
+	if e != nil && !(optionalAmounts && a.PaymentFee == "") {
 		return e
 	}
-	if a.Monetization == "free" && (p.Sign() != 0 || fee.Sign() != 0) {
-		return lifecycleInput("免费方案按收入与支付费用为零测算")
+	if a.Monetization == "free" && (p == nil || fee == nil || p.Sign() != 0 || fee.Sign() != 0) {
+		return lifecycleInput("免费方案的用户价格与支付费用须为零；广告收入另列假设")
 	}
-	if a.Monetization == "paid" && (p.Sign() <= 0 || !safeText(a.PriceBasis, true)) {
-		return lifecycleInput("付费方案需明确价格及对应原文依据")
+	if a.Monetization == "paid" && (p != nil && p.Sign() <= 0 || !safeText(a.PriceBasis, true)) {
+		return lifecycleInput("付费方案需定价依据；已填价格须大于零，未验证报价标为假设")
 	}
 	if len(a.Alternatives) > 20 || len(a.Alternatives) < 3 && (!safeText(a.AlternativeSearch, true) || !safeText(a.FewerAlternativesReason, true)) {
-		return lifecycleInput("实测至少三项替代方案；不足时填写搜索范围和原因")
+		return lifecycleInput("核查至少三项替代方案；不足时填写搜索范围和原因")
 	}
 	seen := map[string]bool{}
 	today := time.Now().UTC().Format("2006-01-02")
 	for _, v := range a.Alternatives {
 		date, e := time.Parse("2006-01-02", v.CheckedAt)
 		if !safeText(v.Name, true) || !safeHTTPS(v.URL) || !safeText(v.Version, true) || !safeText(v.Pricing, true) || !safeText(v.Result, true) || e != nil || date.Format("2006-01-02") > today || seen[v.URL] {
-			return lifecycleInput("替代方案需独立地址、版本、日期、定价和实测结果")
+			return lifecycleInput("替代方案需独立地址、版本、日期、定价和核查结果；未实测须注明")
 		}
 		seen[v.URL] = true
 	}
@@ -166,7 +173,7 @@ func currentEvidence(tx *sql.Tx, id, version, verification int, allowCompleted b
 	}
 	if allowCompleted && n.Status == "completed" {
 		var valid bool
-		if e = tx.QueryRow("SELECT rules_version=? AND verified_at>0 AND valid_until>unixepoch() FROM needs WHERE id=?", rulesVersion, id).Scan(&valid); e != nil {
+		if e = tx.QueryRow("SELECT rules_version IN "+supportedRulesSQL+" AND verified_at>0 AND valid_until>unixepoch() FROM needs WHERE id=?", id).Scan(&valid); e != nil {
 			return n, e
 		}
 		if valid {

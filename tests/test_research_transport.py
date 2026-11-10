@@ -23,6 +23,25 @@ def batch():
 
 
 class TransportTests(unittest.TestCase):
+    def test_opportunity_rule_preserves_frozen_bytes_and_checks_task_version(self):
+        payload = batch()
+        payload.update(schema_version="creative.project-package.v1", rules_version="opportunity.v2",
+                       project={"verdict": "approved"}, candidates=[{"external_id": "fixture"}])
+        filename = self.root / "opportunity.json"
+        filename.write_text(json.dumps(payload))
+        raw = filename.read_bytes()
+        self.client.stage(filename)
+        with self.assertRaises(self.module.TransportError):
+            self.client.submit("fixture-batch")
+        self.assertFalse(any(method == "POST" for method, *_ in self.requests))
+        self.task["rules_version"] = "opportunity.v2"
+        self.client.submit("fixture-batch")
+        self.assertEqual(self.requests[-1][1], "/api/research/v1/projects")
+        self.assertEqual(self.accepted, raw)
+        self.task.update(rules_version="strong-wtp.v1", state="cancelled", should_continue=False)
+        self.assertEqual(self.client.receipt("fixture-batch")["payload"]["status"], "completed")
+        self.assertEqual(filename.read_bytes(), raw)
+
     def test_project_package_uses_fixed_import_route(self):
         payload = batch()
         payload["schema_version"] = "creative.project-package.v1"

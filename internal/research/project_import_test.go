@@ -13,7 +13,12 @@ import (
 
 func projectInput(t *testing.T, s *Service, taskID, revision string) []byte {
 	t.Helper()
+	var rule string
+	if err := s.db.QueryRow("SELECT rules_version FROM research_tasks WHERE id=?", taskID).Scan(&rule); err != nil {
+		t.Fatal(err)
+	}
 	return change(t, fixture(t, taskID), func(v map[string]any) {
+		v["rules_version"] = rule
 		v["schema_version"] = "creative.project-package.v1"
 		v["batch_id"] = "project-one"
 		c, _, a := qualificationFixture()
@@ -35,6 +40,18 @@ func projectInput(t *testing.T, s *Service, taskID, revision string) []byte {
 			ev = append(ev, map[string]any{"evidence_id": e.ID, "valid": true, "payment": e.Signal == "explicit_wtp", "priced": e.PriceQuote != "", "reason": "原文已审查"})
 		}
 		v["project"] = map[string]any{"verdict": "approved", "provider": "openai", "model": "fixture-model", "reviewed_at": time.Now().UTC().Format(time.RFC3339), "catalog_revision": revision, "task_key": "invoice-csv-export", "reasoning": "证据支持明确任务和自助交付", "deduplication": "已比较完整目录，未发现同一任务", "evidence": ev, "approval": approval}
+		if rule == opportunityRulesVersion {
+			cs["alternatives"] = []any{map[string]any{"name": "测试替代", "url": "https://tools.example.com/export", "checked_at": time.Now().Add(-time.Minute).UTC().Format(time.RFC3339), "method": "research_only", "limitations": "仍丢列", "basis": "自制说明"}}
+			for _, e := range cs["evidence"].([]any) {
+				x := e.(map[string]any)
+				x["discussion_url"] = x["url"]
+			}
+			evaluation := evaluationFixture()
+			evaluation["differentiation"].(map[string]any)["gap_evidence_ids"] = []any{"0"}
+			evaluation["acquisition"].(map[string]any)["evidence_ids"] = []any{"0", "2"}
+			q := v["project"].(map[string]any)
+			q["evaluation"], q["qualification_valid_until"] = evaluation, time.Now().Add(29*24*time.Hour).UTC().Format(time.RFC3339)
+		}
 	})
 }
 

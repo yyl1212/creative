@@ -105,6 +105,11 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 8000
+          },
+          "repeat_quote": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 12000
           }
         },
         "required": [
@@ -124,7 +129,13 @@
       }
     },
     "rules_version": {
-      "const": "strong-wtp.v1"
+      "enum": [
+        "strong-wtp.v1",
+        "opportunity.v2"
+      ]
+    },
+    "evaluation": {
+      "$ref": "#/$defs/evaluation"
     }
   },
   "required": [
@@ -143,5 +154,239 @@
     "evidence",
     "rules_version"
   ],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "$defs": {
+    "evaluation": {
+      "type": "object",
+      "properties": {
+        "depth": {
+          "type": "object",
+          "properties": {
+            "context_complete": {
+              "type": "boolean"
+            },
+            "counterevidence_checked": {
+              "type": "boolean"
+            },
+            "alternatives_checked": {
+              "type": "boolean"
+            },
+            "notes": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 8000,
+              "pattern": "\\S"
+            }
+          },
+          "required": [
+            "context_complete",
+            "counterevidence_checked",
+            "alternatives_checked",
+            "notes"
+          ],
+          "additionalProperties": false
+        },
+        "differentiation": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 8000,
+              "pattern": "\\S"
+            },
+            "gap_evidence_ids": {
+              "type": "array",
+              "minItems": 0,
+              "maxItems": 50,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              }
+            },
+            "fewer_alternatives_reason": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 8000
+            }
+          },
+          "required": [
+            "summary",
+            "gap_evidence_ids",
+            "fewer_alternatives_reason"
+          ],
+          "additionalProperties": false
+        },
+        "feasibility": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "enum": [
+                "plausible",
+                "validated",
+                "blocked",
+                "unknown"
+              ]
+            },
+            "basis": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 8000,
+              "pattern": "\\S"
+            },
+            "risks": {
+              "type": "array",
+              "maxItems": 30,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000,
+                "pattern": "\\S"
+              }
+            },
+            "validation_plan": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 8000,
+              "pattern": "\\S"
+            }
+          },
+          "required": [
+            "status",
+            "basis",
+            "risks",
+            "validation_plan"
+          ],
+          "additionalProperties": false
+        },
+        "acquisition": {
+          "type": "object",
+          "properties": {
+            "channel": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000,
+              "pattern": "\\S"
+            },
+            "evidence_ids": {
+              "type": "array",
+              "minItems": 0,
+              "maxItems": 50,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              }
+            },
+            "rationale": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 8000,
+              "pattern": "\\S"
+            }
+          },
+          "required": [
+            "channel",
+            "evidence_ids",
+            "rationale"
+          ],
+          "additionalProperties": false
+        },
+        "economics": {
+          "type": "object",
+          "properties": {
+            "cost_basis": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 8000,
+              "pattern": "\\S"
+            },
+            "revenue_hypothesis": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 8000,
+              "pattern": "\\S"
+            },
+            "validation_plan": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 8000,
+              "pattern": "\\S"
+            }
+          },
+          "required": [
+            "cost_basis",
+            "revenue_hypothesis",
+            "validation_plan"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "depth",
+        "differentiation",
+        "feasibility",
+        "acquisition",
+        "economics"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "rules_version": {
+            "const": "opportunity.v2"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "evaluation"
+        ],
+        "properties": {
+          "candidate": {
+            "properties": {
+              "evidence": {
+                "items": {
+                  "required": [
+                    "discussion_url"
+                  ]
+                }
+              }
+            }
+          },
+          "evidence": {
+            "items": {
+              "required": [
+                "repeat_quote"
+              ]
+            }
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "evaluation"
+          ]
+        },
+        "properties": {
+          "evidence": {
+            "items": {
+              "not": {
+                "required": [
+                  "repeat_quote"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

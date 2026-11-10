@@ -25,11 +25,14 @@ type reviewEvidence struct {
 	PaymentQuote        string  `json:"payment_quote"`
 	PriceQuote          string  `json:"price_quote"`
 	SpendQuote          string  `json:"spend_quote"`
+	RepeatQuote         string  `json:"repeat_quote,omitempty"`
 	ConditionsSupported bool    `json:"conditions_supported"`
 	Reason              string  `json:"reason"`
 }
 type agentReview struct {
 	AgentReview
+	RulesVersion    string           `json:"rules_version"`
+	Evaluation      *Evaluation      `json:"evaluation,omitempty"`
 	CatalogRevision string           `json:"catalog_revision"`
 	TaskKey         string           `json:"task_key"`
 	Verdict         string           `json:"verdict"`
@@ -43,6 +46,10 @@ type ReviewCounts struct {
 	Sites             int `json:"original_sites"`
 	PaymentUsers      int `json:"payment_users"`
 	PriceOrSpendUsers int `json:"price_or_spend_users"`
+	Discussions       int `json:"independent_discussions,omitempty"`
+	RecentUsers       int `json:"recent_unmet_users,omitempty"`
+	RepeatUsers       int `json:"repeat_users,omitempty"`
+	PaymentSignals    int `json:"payment_signal_users,omitempty"`
 }
 type ReviewCheck struct {
 	Verdict     string             `json:"verdict"`
@@ -52,6 +59,8 @@ type ReviewCheck struct {
 	Failures    []string           `json:"failures"`
 	ReviewHash  string             `json:"review_sha256"`
 	ProjectHash string             `json:"project_sha256,omitempty"`
+	Warnings    []string           `json:"warnings,omitempty"`
+	ValidUntil  string             `json:"qualification_valid_until,omitempty"`
 }
 
 // CheckAgentReview 只核对模型工件的结构、引用和集合算术，不联网、不访问数据库、不作语义判断。
@@ -83,16 +92,17 @@ func CheckAgentReview(raw, project []byte, now time.Time) (ReviewCheck, error) {
 	if err != nil {
 		return out, err
 	}
-	if err = schema.Validate(doc); err != nil {
-		return out, fmt.Errorf("invalid_review_schema：字段位置、类型、必填项或格式不符合 agent-review.v1；不接受自由文字计数")
-	}
 	if secretPattern.MatchString(jsonText(doc)) {
 		return out, fmt.Errorf("invalid_review_secret：审查不能包含凭据")
+	}
+	if err = schema.Validate(doc); err != nil {
+		return out, fmt.Errorf("invalid_review_schema：须重新生成完整对象：%w", err)
 	}
 	var r agentReview
 	if err = json.Unmarshal(raw, &r); err != nil {
 		return out, err
 	}
+	v2 := r.RulesVersion == opportunityRulesVersion
 	if r.ReviewedAt.After(now) || r.ReviewedAt.Before(now.AddDate(0, 0, -30)) {
 		return out, fmt.Errorf("invalid_review_time：审查须在最近 30 天内")
 	}
@@ -119,12 +129,17 @@ func CheckAgentReview(raw, project []byte, now time.Time) (ReviewCheck, error) {
 		}
 		delete(assessed, ev.ID)
 		observed, _ := time.Parse(time.RFC3339, ev.ObservedAt)
-		published := time.Time{}
-		if ev.PublishedAt != nil {
-			published, _ = time.Parse(time.RFC3339, *ev.PublishedAt)
+		published, dateErr := evidenceDate(ev, v2)
+		if dateErr != nil {
+			return out, dateErr
 		}
 		if observed.After(r.ReviewedAt) || published.After(observed) {
 			return out, fmt.Errorf("invalid_review_time：原文、观察与审查时间顺序错误")
+		}
+		if v2 {
+			if _, err := discussionKey(ev); err != nil {
+				return out, err
+			}
 		}
 		u, err := url.Parse(ev.URL)
 		if err != nil || u.User != nil {
@@ -134,7 +149,7 @@ func CheckAgentReview(raw, project []byte, now time.Time) (ReviewCheck, error) {
 		if err != nil {
 			return out, fmt.Errorf("invalid_review_source：来源站点无效")
 		}
-		for _, q := range append([]string{a.UnmetQuote, a.PaymentQuote, a.PriceQuote, a.SpendQuote}, ev.Conditions...) {
+		for _, q := range append([]string{a.UnmetQuote, a.PaymentQuote, a.PriceQuote, a.SpendQuote, a.RepeatQuote}, ev.Conditions...) {
 			if q != "" && !contains(ev.Quote, q) {
 				return out, fmt.Errorf("invalid_review_quote：审查引用或条件不在该证据原文中")
 			}
@@ -155,14 +170,18 @@ func CheckAgentReview(raw, project []byte, now time.Time) (ReviewCheck, error) {
 			}
 			authors[key] = user
 		}
-		valid := a.Relevant && a.Original && a.DirectUser && user != "" && author != "" && !published.IsZero()
+		valid := a.Relevant && a.Original && a.DirectUser && user != "" && author != "" && (v2 || !published.IsZero())
 		d := EvidenceDecision{ID: ev.ID, Valid: valid, Reason: a.Reason, AuthorKey: user, Site: site, Fingerprint: fingerprint(source.Normalize(ev.Quote))}
 		if valid {
 			if a.UnmetQuote != "" {
 				unmetUsers[user] = true
 			}
-			d.Payment = (ev.Signal == "explicit_wtp" || ev.Signal == "currently_paying") && a.PaymentQuote != "" && a.ConditionsSupported && now.Before(published.AddDate(1, 0, 0))
-			d.Priced = d.Payment && (a.PriceQuote != "" && supportedPrice(ev.Price, a.PriceQuote) || ev.Signal == "currently_paying" && a.SpendQuote != "")
+			d.Payment = (ev.Signal == "explicit_wtp" || ev.Signal == "currently_paying") && a.PaymentQuote != "" && a.ConditionsSupported && !published.IsZero() && now.Before(published.AddDate(1, 0, 0))
+			priceSupported := supportedPrice(ev.Price, a.PriceQuote)
+			if v2 {
+				priceSupported = opportunityPrice(ev.Price, a.PriceQuote)
+			}
+			d.Priced = d.Payment && (a.PriceQuote != "" && priceSupported || ev.Signal == "currently_paying" && a.SpendQuote != "")
 		}
 		out.Evidence = append(out.Evidence, d)
 	}
@@ -188,7 +207,7 @@ func CheckAgentReview(raw, project []byte, now time.Time) (ReviewCheck, error) {
 			priced[d.AuthorKey] = true
 		}
 	}
-	out.Counts = ReviewCounts{len(users), len(sites), len(paying), len(priced)}
+	out.Counts = ReviewCounts{Users: len(users), Sites: len(sites), PaymentUsers: len(paying), PriceOrSpendUsers: len(priced)}
 	if !r.SelfService {
 		out.Failures = append(out.Failures, "not_self_service")
 	}
@@ -198,14 +217,19 @@ func CheckAgentReview(raw, project []byte, now time.Time) (ReviewCheck, error) {
 	if len(users) < 3 {
 		out.Failures = append(out.Failures, "independent_users_below_3")
 	}
-	if len(sites) < 2 {
+	if !v2 && len(sites) < 2 {
 		out.Failures = append(out.Failures, "original_sites_below_2")
 	}
-	if len(paying) < 2 {
+	if !v2 && len(paying) < 2 {
 		out.Failures = append(out.Failures, "payment_users_below_2")
 	}
-	if len(priced) < 1 {
+	if !v2 && len(priced) < 1 {
 		out.Failures = append(out.Failures, "price_or_spend_missing")
+	}
+	if v2 {
+		if err := checkOpportunity(r, &out, now); err != nil {
+			return out, err
+		}
 	}
 	out.Eligible = len(out.Failures) == 0
 	out.Verdict = r.Verdict
@@ -228,10 +252,13 @@ func CheckAgentReview(raw, project []byte, now time.Time) (ReviewCheck, error) {
 		var reviewDoc, projectDoc map[string]any
 		_ = json.Unmarshal(raw, &reviewDoc)
 		_ = json.Unmarshal(project, &projectDoc)
-		if b.RulesVersion != rulesVersion || !reflect.DeepEqual(reviewDoc["candidate"], projectDoc["candidates"].([]any)[0]) || p.AgentReview != r.AgentReview || p.CatalogRevision != r.CatalogRevision || p.TaskKey != r.TaskKey {
+		if b.RulesVersion != r.RulesVersion || !reflect.DeepEqual(reviewDoc["candidate"], projectDoc["candidates"].([]any)[0]) || p.AgentReview != r.AgentReview || p.CatalogRevision != r.CatalogRevision || p.TaskKey != r.TaskKey {
 			return out, fmt.Errorf("invalid_review_package：候选、模型记录、目录或任务与审查不一致")
 		}
-		decision, _, err := projectDecision(b.Candidates[0], p, now)
+		if v2 && (!reflect.DeepEqual(p.Evaluation, r.Evaluation) || p.ValidUntil == nil || p.ValidUntil.UTC().Format(time.RFC3339) != out.ValidUntil || p.Approval.Monetization != r.Candidate.Monetization) {
+			return out, fmt.Errorf("invalid_review_package：评估、资格截止或变现方式与审查不一致")
+		}
+		decision, _, err := projectDecision(b.Candidates[0], p, b.RulesVersion, now)
 		if err != nil {
 			return out, err
 		}

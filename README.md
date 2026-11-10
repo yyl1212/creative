@@ -6,6 +6,8 @@
 
 外部模型审查使用 [单候选 JSON 契约](schemas/agent-review.v1.schema.json)，先执行 `creative-admin review-check --file <审查JSON>` 去重计数，提交前加 `--project <立项包JSON>` 核对一致性。失败响应不自动修补；流程与限制见运行说明。
 
+新建外部任务采用 `opportunity.v2`：持续补齐少数候选的原帖后续、独立讨论和竞争方案差异，分别评估付费工具与免费广告工具；付款意愿、技术风险和价格完整性分开记录。允许保留日期精度与未知成本，立项附带后续验证计划。旧 `strong-wtp.v1` 任务与冻结包仍兼容，定时开关保持关闭。见 [设计与兼容性说明](docs/superpowers/specs/2026-11-10-research-depth-design.md)及[回归记录](docs/research-depth-validation.md)。
+
 管理后台主导航为总览、需求池、开发工作区、导入记录、费用与用量五项。日期日报和备份状态并入总览，接收会话并入导入记录，智能体接入位于页头次级入口；开发技术表单可展开登记。搜寻、分析和立项判断全部由外部 Codex 完成；网站不加载模型配置、不抓取原文、不消费旧研究队列。发布与备份恢复仍通过受控 CLI，维护循环保留数据清理和最近 7 份一致性备份。见 [运维手册](docs/operations.md)。
 
 ## 本地运行

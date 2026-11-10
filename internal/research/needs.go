@@ -13,6 +13,7 @@ type VerificationSummary struct {
 type Need struct {
 	ID                     int
 	Title, Task, Status    string
+	RulesVersion           string
 	Version                int
 	VerifiedAt, ValidUntil string
 	Decision               Decision
@@ -32,7 +33,8 @@ func scanNeed(row interface{ Scan(...any) error }) (Need, error) {
 	if e != nil {
 		return n, e
 	}
-	if n.Status == "qualified" && (rule != rulesVersion || verified == 0 || until <= time.Now().Unix()) {
+	n.RulesVersion = rule
+	if n.Status == "qualified" && (!supportedRules(rule) || verified == 0 || until <= time.Now().Unix()) {
 		n.Status = "expired"
 	}
 	if verified > 0 {
@@ -116,7 +118,7 @@ func (s *Service) Need(id, selected int) (*Need, error) {
 	if selected > 0 {
 		var decision string
 		var stamp int64
-		e = tx.QueryRow("SELECT decision,verified_at FROM need_verifications WHERE need_id=? AND id=?", id, selected).Scan(&decision, &stamp)
+		e = tx.QueryRow("SELECT v.decision,v.verified_at,b.rules_version FROM need_verifications v JOIN research_batches b ON b.id=v.batch_row WHERE v.need_id=? AND v.id=?", id, selected).Scan(&decision, &stamp, &n.RulesVersion)
 		if e == sql.ErrNoRows {
 			return nil, fail(404, "verification_not_found", "/verification", "核验版本不存在或已过保留期限")
 		}
@@ -125,6 +127,7 @@ func (s *Service) Need(id, selected int) (*Need, error) {
 		}
 		n.Historical = selected != n.VerificationID
 		n.VerificationID = selected
+		n.Decision = Decision{}
 		if e = json.Unmarshal([]byte(decision), &n.Decision); e != nil {
 			return nil, e
 		}

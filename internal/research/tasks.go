@@ -172,14 +172,11 @@ func (s *Service) createTask(producer string, topics, languages []string, target
 	}
 	id := "task-" + rand.Text()
 	rules := rulesJSON
+	version := rulesVersion
 	if project {
-		var value map[string]any
-		_ = json.Unmarshal([]byte(rules), &value)
-		value["decision_mode"] = "agent_project"
-		value["requirements"].([]any)[5] = "外部模型完成全部证据、去重和立项判断；网站只校验契约并导入已立项项目"
-		rules = jsonText(value)
+		rules, version = opportunityRulesJSON, opportunityRulesVersion
 	}
-	if _, err = tx.Exec("INSERT INTO research_tasks(id,producer_id,topics,languages,target_count,rules_version,rules,state) VALUES (?,?,?,?,?,?,?,'active')", id, producer, string(topicJSON), string(languageJSON), target, rulesVersion, rules); err != nil {
+	if _, err = tx.Exec("INSERT INTO research_tasks(id,producer_id,topics,languages,target_count,rules_version,rules,state) VALUES (?,?,?,?,?,?,?,'active')", id, producer, string(topicJSON), string(languageJSON), target, version, rules); err != nil {
 		return nil, err
 	}
 	if _, err = tx.Exec("INSERT INTO audit_events(action,account,source,object_id,details) VALUES ('task_created',?,?,?,?)", actor, source, id, `{"before":null,"after":"active","version":1}`); err != nil {

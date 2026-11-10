@@ -54,7 +54,7 @@ func (s *Service) Maintenance(now time.Time) error {
 		query string
 		args  []any
 	}{
-		{"UPDATE needs SET status='pending',version=version+1 WHERE status='qualified' AND (valid_until<=? OR rules_version!=?)", []any{now.Unix(), rulesVersion}},
+		{"UPDATE needs SET status='pending',version=version+1 WHERE status='qualified' AND (valid_until<=? OR rules_version NOT IN " + supportedRulesSQL + ")", []any{now.Unix()}},
 		{"UPDATE research_batches SET payload=X'',raw_purged=1,version=version+1 WHERE created_at<=? AND raw_purged=0", []any{now.AddDate(0, 0, -30).Unix()}},
 		{"UPDATE need_sources SET raw=NULL WHERE fetched_at<=?", []any{now.AddDate(0, 0, -30).Unix()}},
 		{"DELETE FROM need_sources WHERE fetched_at<=?", []any{now.AddDate(0, 0, -180).Unix()}},

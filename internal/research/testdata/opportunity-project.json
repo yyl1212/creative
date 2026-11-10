@@ -1,0 +1,187 @@
+{
+  "schema_version": "creative.project-package.v1",
+  "rules_version": "opportunity.v2",
+  "task_id": "task-example",
+  "batch_id": "project-example-001",
+  "run_id": "run-example",
+  "submitted_at": "2026-11-08T08:30:00+08:00",
+  "candidates": [
+    {
+      "external_id": "fixture-opportunity",
+      "title": "自制测试：表格列导出",
+      "language": "zh",
+      "target_user": "需要跨平台整理商品资料的卖家",
+      "job_to_be_done": "自助导出完整表格列",
+      "constraints": [
+        "能够自助处理并下载结果"
+      ],
+      "evidence": [
+        {
+          "evidence_id": "a",
+          "url": "https://forum.example.org/comment/a",
+          "discussion_url": "https://forum.example.org/threads/one",
+          "author_ref": "fixture-a",
+          "published_at": null,
+          "published_date": "2026-11-01",
+          "observed_at": "2026-11-10T10:00:00Z",
+          "quote": "My columns disappear every week.",
+          "signal": "pain_only",
+          "price": null,
+          "conditions": [],
+          "unmet_need": "自制示例：表格列缺失"
+        },
+        {
+          "evidence_id": "b",
+          "url": "https://forum.example.org/comment/b",
+          "discussion_url": "https://forum.example.org/threads/one",
+          "author_ref": "fixture-b",
+          "published_at": null,
+          "published_date": "2026-11-01",
+          "observed_at": "2026-11-10T10:00:00Z",
+          "quote": "Fix the table columns and I would pay for it.",
+          "signal": "explicit_wtp",
+          "price": null,
+          "conditions": [],
+          "unmet_need": "自制示例：表格列缺失"
+        },
+        {
+          "evidence_id": "c",
+          "url": "https://forum.example.org/comment/c",
+          "discussion_url": "https://forum.example.org/threads/two",
+          "author_ref": "fixture-c",
+          "published_at": null,
+          "published_date": "2026-11-01",
+          "observed_at": "2026-11-10T10:00:00Z",
+          "quote": "My table columns are missing after every export.",
+          "signal": "pain_only",
+          "price": null,
+          "conditions": [],
+          "unmet_need": "自制示例：表格列缺失"
+        }
+      ],
+      "alternatives": [
+        {
+          "name": "自制替代工具",
+          "url": "https://tools.example.com/converter",
+          "checked_at": "2026-11-10T10:00:00Z",
+          "method": "research_only",
+          "limitations": "示例描述：多列导出仍有差异",
+          "basis": "自制说明，不是实测"
+        }
+      ],
+      "monetization_proposal": "paid",
+      "unknowns": [
+        "没有实际市场证据，不可向真实任务提交"
+      ]
+    }
+  ],
+  "run_report": {
+    "state": "submitted",
+    "sources_checked": [
+      "example.org"
+    ],
+    "unresolved": [
+      "需要补充独立付费证据"
+    ],
+    "resume_hint": "等待网站校验结果",
+    "usage": []
+  },
+  "project": {
+    "verdict": "approved",
+    "provider": "openai",
+    "model": "fixture-model",
+    "reviewed_at": "2026-11-10T11:00:00Z",
+    "catalog_revision": "0000000000000000000000000000000000000000000000000000000000000000",
+    "task_key": "fixture-project-key",
+    "reasoning": "仅用于接口测试的自制样例，不是真实需求",
+    "deduplication": "已比较测试目录",
+    "evidence": [
+      {
+        "evidence_id": "a",
+        "valid": true,
+        "payment": false,
+        "priced": false,
+        "reason": "自制模型结论"
+      },
+      {
+        "evidence_id": "b",
+        "valid": true,
+        "payment": true,
+        "priced": false,
+        "reason": "自制模型结论"
+      },
+      {
+        "evidence_id": "c",
+        "valid": true,
+        "payment": false,
+        "priced": false,
+        "reason": "自制模型结论"
+      }
+    ],
+    "approval": {
+      "review_notes": "自制测试资料：已记录 review_notes",
+      "alternative_search": "自制测试资料：已记录 alternative_search",
+      "fewer_alternatives_reason": "自制测试资料：已记录 fewer_alternatives_reason",
+      "rationale": "自制测试资料：已记录 rationale",
+      "sustainability": "自制测试资料：已记录 sustainability",
+      "resource_protection": "自制测试资料：已记录 resource_protection",
+      "self_service": "自制测试资料：已记录 self_service",
+      "gap": "自制测试资料：已记录 gap",
+      "scope": "自制测试资料：已记录 scope",
+      "exclusions": "自制测试资料：已记录 exclusions",
+      "acceptance": "自制测试资料：已记录 acceptance",
+      "acquisition": "自制测试资料：已记录 acquisition",
+      "verification_id": 0,
+      "reviewed_evidence": [
+        "a",
+        "b",
+        "c"
+      ],
+      "alternatives": [],
+      "monetization": "paid",
+      "unit_cost": "",
+      "currency": "",
+      "unit": "每次",
+      "price": "",
+      "payment_fee": "",
+      "price_basis": "只有付款意愿，尚未定价"
+    },
+    "evaluation": {
+      "depth": {
+        "context_complete": true,
+        "counterevidence_checked": true,
+        "alternatives_checked": true,
+        "notes": "自制完整上下文，含已解决用户的排除说明"
+      },
+      "differentiation": {
+        "summary": "自制示例：多列表格仍缺列",
+        "gap_evidence_ids": [
+          "a"
+        ],
+        "fewer_alternatives_reason": "自制测试只有一个竞品"
+      },
+      "feasibility": {
+        "status": "plausible",
+        "basis": "标准CSV处理；未实测",
+        "risks": [
+          "复杂表格待验证"
+        ],
+        "validation_plan": "自制多列样本逐格比对"
+      },
+      "acquisition": {
+        "channel": "表格教程",
+        "evidence_ids": [
+          "a",
+          "c"
+        ],
+        "rationale": "自制示例：两个讨论寻找工具"
+      },
+      "economics": {
+        "cost_basis": "浏览器计算；实际成本未知",
+        "revenue_hypothesis": "待测按次收费，无已验证收入",
+        "validation_plan": "试运行后核对使用成本与转化"
+      }
+    },
+    "qualification_valid_until": "2026-12-10T11:00:00Z"
+  }
+}

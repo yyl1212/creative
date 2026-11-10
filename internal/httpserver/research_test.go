@@ -34,7 +34,7 @@ func TestProjectAPIImportsApprovedPackage(t *testing.T) {
 	if err = json.Unmarshal(w.Body.Bytes(), &catalog); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := os.ReadFile("../research/testdata/project.json")
+	raw, err := os.ReadFile("../research/testdata/opportunity-project.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,11 +44,14 @@ func TestProjectAPIImportsApprovedPackage(t *testing.T) {
 	q := v["project"].(map[string]any)
 	q["catalog_revision"] = catalog.Revision
 	q["reviewed_at"] = time.Now().UTC().Format(time.RFC3339)
+	q["qualification_valid_until"] = time.Now().Add(29 * 24 * time.Hour).UTC().Format(time.RFC3339)
+	q["evaluation"].(map[string]any)["feasibility"].(map[string]any)["basis"] = "尚未实测 <script>alert(1)</script>"
 	for _, item := range v["candidates"].([]any)[0].(map[string]any)["evidence"].([]any) {
 		e := item.(map[string]any)
-		e["published_at"] = time.Now().AddDate(0, -1, 0).UTC().Format(time.RFC3339)
+		e["published_date"] = time.Now().AddDate(0, -1, 0).UTC().Format(time.DateOnly)
 		e["observed_at"] = time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
 	}
+	v["candidates"].([]any)[0].(map[string]any)["alternatives"].([]any)[0].(map[string]any)["checked_at"] = time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
 	raw, _ = json.Marshal(v)
 	w = apiRequest(b.app, "POST", "projects", secret, raw)
 	if w.Code != 202 || !strings.Contains(w.Body.String(), `"development_state":"approved"`) {
@@ -63,6 +66,12 @@ func TestProjectAPIImportsApprovedPackage(t *testing.T) {
 	b.login(t)
 	if w = b.request("GET", "/admin/needs/1", nil, nil); w.Code != 200 || !strings.Contains(w.Body.String(), "外部模型判断") || strings.Contains(w.Body.String(), `action="/admin/needs/1/approve"`) {
 		t.Fatal(w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "技术验证计划") || !strings.Contains(w.Body.String(), "opportunity.v2") || !strings.Contains(w.Body.String(), "仅日期") || strings.Contains(w.Body.String(), "<script>alert(1)</script>") {
+		t.Fatal("missing or unsafe opportunity details", w.Body.String())
+	}
+	if w = b.request("GET", "/admin/developments/1", nil, nil); w.Code != 200 || !strings.Contains(w.Body.String(), "待验证") || !strings.Contains(w.Body.String(), "未知") {
+		t.Fatal("missing unknown cost display", w.Code, w.Body.String())
 	}
 }
 
@@ -287,6 +296,7 @@ func emptyReportHTTP(t *testing.T, task string) []byte {
 		t.Fatal(err)
 	}
 	v["candidates"] = []any{}
+	v["rules_version"] = "opportunity.v2"
 	raw, err := json.Marshal(v)
 	if err != nil {
 		t.Fatal(err)
