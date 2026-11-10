@@ -40,18 +40,14 @@ func TestResearchAdminWorkflow(t *testing.T) {
 		t.Fatal("producer not persisted", e)
 	}
 	p := ps[0]
-	csrf = token(t, b.request("GET", "/admin/tasks", nil, nil))
-	w = b.request("POST", "/admin/tasks", url.Values{"producer_id": {p.ID}, "topics": {"表格转换\n批量处理"}, "languages": {"zh", "en"}, "target_count": {"3"}, "gorilla.csrf.Token": {csrf}}, nil)
-	if w.Code != 303 {
-		t.Fatal("create task", w.Code, w.Body.String())
-	}
-	task, e := b.app.research.CurrentTask(p)
-	if e != nil || task == nil {
-		t.Fatal("task missing", e)
+	// 历史数据仍可查看，但不再通过后台创建研究任务。
+	task, e := b.app.research.CreateTask(p.ID, []string{"表格转换", "批量处理"}, []string{"zh", "en"}, 3, "fixture", "local")
+	if e != nil {
+		t.Fatal(e)
 	}
 	raw := bytes.Replace(httpFixture(t, task.ID), []byte("商品表格模板转换"), []byte("<script>alert('x')</script>"), 1)
-	if w = apiRequest(b.app, "POST", "batches", secret, raw); w.Code != 202 {
-		t.Fatal("submit", w.Code, w.Body.String())
+	if _, e = b.app.research.Receive(p, raw); e != nil {
+		t.Fatal("historical fixture", e)
 	}
 	w = b.request("GET", "/admin/batches", nil, nil)
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "batch-example-001") {
@@ -61,25 +57,8 @@ func TestResearchAdminWorkflow(t *testing.T) {
 	if w.Code != 200 || strings.Contains(w.Body.String(), "<script>") || !strings.Contains(w.Body.String(), "&lt;script&gt;") || !strings.Contains(w.Body.String(), "待验证") {
 		t.Fatal("unsafe material view", w.Code)
 	}
-	page := b.request("GET", "/admin/tasks", nil, nil)
-	csrf = token(t, page)
-	values := url.Values{"version": {fmt.Sprint(task.Version)}, "gorilla.csrf.Token": {csrf}}
-	if w = b.request("POST", "/admin/tasks/"+task.ID+"/cancel", values, nil); w.Code != 303 {
-		t.Fatal("cancel", w.Code)
-	}
-	if w = b.request("POST", "/admin/tasks/"+task.ID+"/resume", values, nil); w.Code != 409 {
-		t.Fatal("stale state accepted", w.Code)
-	}
-	task, e = b.app.research.CurrentTask(p)
-	if e != nil {
-		t.Fatal(e)
-	}
-	values.Set("version", fmt.Sprint(task.Version))
-	if w = b.request("POST", "/admin/tasks/"+task.ID+"/resume", values, nil); w.Code != 303 {
-		t.Fatal("resume", w.Code, w.Body.String())
-	}
 	csrf = token(t, b.request("GET", "/admin/producers", nil, nil))
-	values = url.Values{"version": {fmt.Sprint(p.Version)}, "gorilla.csrf.Token": {csrf}}
+	values := url.Values{"version": {fmt.Sprint(p.Version)}, "gorilla.csrf.Token": {csrf}}
 	if w = b.request("POST", "/admin/producers/"+p.ID+"/rotate", values, nil); w.Code != 200 {
 		t.Fatal("rotate", w.Code)
 	}
@@ -111,7 +90,7 @@ func TestAdminBatchesPaginationAndInvalidForms(t *testing.T) {
 	b, _ := setupResearch(t)
 	b.login(t)
 	csrf := token(t, b.request("GET", "/admin/tasks", nil, nil))
-	if w := b.request("POST", "/admin/tasks", url.Values{"target_count": {"not-a-number"}, "gorilla.csrf.Token": {csrf}}, nil); w.Code != 422 {
+	if w := b.request("POST", "/admin/tasks", url.Values{"target_count": {"not-a-number"}, "gorilla.csrf.Token": {csrf}}, nil); w.Code != 410 {
 		t.Fatal("invalid task input", w.Code)
 	}
 	for _, path := range []string{"/admin/batches?before=-1", "/admin/batches?before=no", "/admin/batches/no"} {

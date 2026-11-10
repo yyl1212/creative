@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/yyl1212/creative/internal/auth"
 	"github.com/yyl1212/creative/internal/research"
@@ -15,14 +14,14 @@ func (a *App) researchRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /admin/needs", a.needsPage)
 	mux.HandleFunc("GET /admin/needs/{id}", a.needPage)
 	mux.HandleFunc("GET /admin/usage", a.usagePage)
-	mux.HandleFunc("POST /admin/batches/{id}/retry", a.retryBatch)
+	mux.HandleFunc("POST /admin/batches/{id}/retry", a.retiredResearchAction)
 	mux.HandleFunc("GET /admin/producers", a.producersPage)
 	mux.HandleFunc("POST /admin/producers", a.createProducer)
 	mux.HandleFunc("POST /admin/producers/{id}/rotate", a.rotateProducer)
 	mux.HandleFunc("POST /admin/producers/{id}/revoke", a.revokeProducer)
 	mux.HandleFunc("GET /admin/tasks", a.tasksPage)
-	mux.HandleFunc("POST /admin/tasks", a.createTask)
-	mux.HandleFunc("POST /admin/tasks/{id}/{action}", a.changeTask)
+	mux.HandleFunc("POST /admin/tasks", a.retiredResearchAction)
+	mux.HandleFunc("POST /admin/tasks/{id}/{action}", a.retiredResearchAction)
 	mux.HandleFunc("GET /admin/batches", a.batchesPage)
 	mux.HandleFunc("GET /admin/batches/{id}", a.batchPage)
 }
@@ -65,7 +64,7 @@ func stateLabel(state string) string {
 	case "validating":
 		return "验证中"
 	case "completed":
-		return "已验证"
+		return "处理完成"
 	case "approved":
 		return "已批准立项"
 	case "design_ready":
@@ -179,61 +178,14 @@ func (a *App) tasksPage(w http.ResponseWriter, r *http.Request) {
 		a.adminResearchError(w, r, user, err)
 		return
 	}
-	ps, err := a.Auth.Producers()
-	if err != nil {
-		a.adminResearchError(w, r, user, err)
-		return
-	}
-	a.render(w, r, "tasks.html", 200, view{Username: user.Username, Page: "tasks", Tasks: tasks, Producers: ps, APIEnabled: a.apiHost != ""})
+	a.render(w, r, "tasks.html", 200, view{Username: user.Username, Page: "tasks", Tasks: tasks, APIEnabled: a.apiHost != ""})
 }
-func (a *App) createTask(w http.ResponseWriter, r *http.Request) {
+func (a *App) retiredResearchAction(w http.ResponseWriter, r *http.Request) {
 	user, ok := a.current(w, r)
 	if !ok {
 		return
 	}
-	target, err := positiveForm(r, "target_count")
-	if err != nil {
-		a.adminResearchError(w, r, user, err)
-		return
-	}
-	topics := []string{}
-	for _, line := range strings.Split(r.PostForm.Get("topics"), "\n") {
-		if text := strings.TrimSpace(line); text != "" {
-			topics = append(topics, text)
-		}
-	}
-	create := a.research.CreateTask
-	switch r.PostForm.Get("decision_mode") {
-	case "agent_project":
-		create = a.research.CreateProjectTask
-	case "", "website":
-	default:
-		a.adminResearchError(w, r, user, &research.Error{Status: 422, Code: "invalid_mode", Field: "/decision_mode", Message: "任务模式无效"})
-		return
-	}
-	_, err = create(r.PostForm.Get("producer_id"), topics, r.PostForm["languages"], target, user.Username, a.source(r))
-	if err != nil {
-		a.adminResearchError(w, r, user, err)
-		return
-	}
-	http.Redirect(w, r, "/admin/tasks", http.StatusSeeOther)
-}
-func (a *App) changeTask(w http.ResponseWriter, r *http.Request) {
-	user, ok := a.current(w, r)
-	if !ok {
-		return
-	}
-	version, err := positiveForm(r, "version")
-	if err != nil {
-		a.adminResearchError(w, r, user, err)
-		return
-	}
-	_, err = a.research.ChangeTask(r.PathValue("id"), version, r.PathValue("action"), user.Username, a.source(r))
-	if err != nil {
-		a.adminResearchError(w, r, user, err)
-		return
-	}
-	http.Redirect(w, r, "/admin/tasks", http.StatusSeeOther)
+	a.adminResearchError(w, r, user, &research.Error{Status: http.StatusGone, Code: "research_action_retired", Message: "研究操作已移至外部 Codex；管理后台只接收与管理研究结果。"})
 }
 func (a *App) batchesPage(w http.ResponseWriter, r *http.Request) {
 	user, ok := a.current(w, r)

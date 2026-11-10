@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func TestVerificationAdminViewsAndRetry(t *testing.T) {
+func TestVerificationAdminViewsAndRetiredRetry(t *testing.T) {
 	b, cfg := setupResearch(t)
 	db := cfg.DB
 	for _, path := range []string{"/admin/needs", "/admin/needs/1", "/admin/usage"} {
@@ -39,18 +39,23 @@ func TestVerificationAdminViewsAndRetry(t *testing.T) {
 		t.Fatal(e)
 	}
 	page := b.request("GET", "/admin/batches/1", nil, nil)
-	if page.Code != 200 || !strings.Contains(page.Body.String(), "重试未完成项") {
-		t.Fatal("retry not visible", page.Code)
+	if page.Code != 200 || strings.Contains(page.Body.String(), "重试未完成项") || !strings.Contains(page.Body.String(), "旧核验流程已停止") {
+		t.Fatal("legacy retry still visible", page.Code)
 	}
 	if w := b.request("POST", "/admin/batches/1/retry", nil, nil); w.Code != 403 {
 		t.Fatal("retry CSRF", w.Code)
 	}
 	values := url.Values{"version": {"1"}, "gorilla.csrf.Token": {token(t, page)}}
-	if w := b.request("POST", "/admin/batches/1/retry", values, nil); w.Code != 303 {
+	if w := b.request("POST", "/admin/batches/1/retry", values, nil); w.Code != 410 {
 		t.Fatal("retry", w.Code, w.Body.String())
 	}
-	if w := b.request("POST", "/admin/batches/1/retry", values, nil); w.Code != 409 {
+	if w := b.request("POST", "/admin/batches/1/retry", values, nil); w.Code != 410 {
 		t.Fatal("stale retry", w.Code)
+	}
+	var batchState string
+	var batchVersion int
+	if err := db.QueryRow("SELECT status,version FROM research_batches WHERE id=1").Scan(&batchState, &batchVersion); err != nil || batchState != "paused_service" || batchVersion != 1 {
+		t.Fatal("retired retry changed batch", batchState, batchVersion, err)
 	}
 	_, e = db.Exec("INSERT INTO needs(status,title,task,decision,verified_at,valid_until,rules_version) VALUES ('qualified',?,'CSV',?,unixepoch(),?,'strong-wtp.v1')", "<script>bad</script>", `{"outcome":"qualified","reasons":[],"evidence":[]}`, time.Now().Add(-time.Hour).Unix())
 	if e != nil {

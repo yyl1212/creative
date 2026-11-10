@@ -9,13 +9,11 @@ import (
 	"time"
 
 	"github.com/yyl1212/creative/internal/auth"
-	"github.com/yyl1212/creative/internal/model"
 	"github.com/yyl1212/creative/internal/research"
-	"github.com/yyl1212/creative/internal/source"
 	"github.com/yyl1212/creative/internal/store"
 )
 
-func TestWorkerDisabledProviderAndShutdown(t *testing.T) {
+func TestMaintenanceDoesNotProcessResearchQueue(t *testing.T) {
 	db, e := store.Open(filepath.Join(t.TempDir(), "db"))
 	if e != nil {
 		t.Fatal(e)
@@ -42,25 +40,21 @@ func TestWorkerDisabledProviderAndShutdown(t *testing.T) {
 	if _, e = s.Receive(p, raw); e != nil {
 		t.Fatal(e)
 	}
-	r, e := model.New(model.Config{Primary: "deepseek", Providers: map[string]model.Provider{"deepseek": {}}}, s)
-	if e != nil {
-		t.Fatal(e)
-	}
-	w := Worker{Service: s, Fetcher: source.New(), Reviewer: r}
+	maintained := make(chan struct{}, 1)
+	w := Worker{Service: s, Maintain: func(context.Context, time.Time) error { maintained <- struct{}{}; return nil }}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
 	go func() { done <- w.run(ctx, 10*time.Millisecond) }()
-	deadline := time.Now().Add(2 * time.Second)
+	select {
+	case <-maintained:
+	case <-time.After(time.Second):
+		t.Fatal("maintenance did not run")
+	}
+	time.Sleep(30 * time.Millisecond)
 	var status string
-	for time.Now().Before(deadline) {
-		if e = db.QueryRow("SELECT status FROM research_batches").Scan(&status); e != nil {
-			t.Fatal(e)
-		}
-		if status == "paused_service" {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
+	if e = db.QueryRow("SELECT status FROM research_batches").Scan(&status); e != nil {
+		t.Fatal(e)
 	}
 	cancel()
 	select {
@@ -71,8 +65,8 @@ func TestWorkerDisabledProviderAndShutdown(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("shutdown blocked")
 	}
-	if status != "paused_service" {
-		t.Fatal("disabled model did not pause", status)
+	if status != "pending_validation" {
+		t.Fatal("maintenance consumed a legacy research batch", status)
 	}
 	var calls int
 	_ = db.QueryRow("SELECT count(*) FROM usage_records WHERE origin='website'").Scan(&calls)

@@ -47,7 +47,7 @@ func approvedFixture(t *testing.T) (*Service, *sql.DB, *Need, Approval) {
 		}
 	}
 	for i := 0; i < 3; i++ {
-		a.Alternatives = append(a.Alternatives, AlternativeReview{Name: fmt.Sprint("替代", i), URL: fmt.Sprintf("https://example.org/tool%d", i), Version: "2026-11", CheckedAt: now.Format("2006-01-02"), Pricing: "USD 5 / month", Result: "亲自操作样例，仍缺少对应功能"})
+		a.Alternatives = append(a.Alternatives, AlternativeReview{Name: fmt.Sprint("替代", i), URL: fmt.Sprintf("https://example.org/tool%d", i), Version: "2026-11", CheckedAt: now.UTC().Format("2006-01-02"), Pricing: "USD 5 / month", Result: "亲自操作样例，仍缺少对应功能"})
 	}
 	return s, db, n, a
 }

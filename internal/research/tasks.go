@@ -51,15 +51,18 @@ func scanTask(row interface{ Scan(...any) error }) (*Task, error) {
 	}
 	t.Rules = json.RawMessage(rules)
 	t.RemainingGap = t.TargetCount
-	t.ShouldContinue = t.Current && t.State == "active"
+	t.ShouldContinue = t.Current && t.State == "active" && projectTask(&t)
 	t.UpdatedAt = time.Unix(updated, 0).UTC().Format(time.RFC3339)
 	switch t.State {
 	case "cancelled":
-		t.ResumeCondition = "仅管理员明确恢复当前任务"
+		t.ResumeCondition = "仅外部 Codex 经授权通过私有 CLI 恢复接收会话"
 	case "paused_service":
-		t.ResumeCondition = "服务恢复并由管理员恢复"
+		t.ResumeCondition = "服务恢复后由外部 Codex 经授权恢复接收会话"
 	case "waiting_for_signals":
-		t.ResumeCondition = "满 24 小时后由维护任务检查缺口，或管理员明确恢复"
+		t.ResumeCondition = "由外部 Codex 判断新线索并经授权恢复；网站不会定时恢复"
+	}
+	if !projectTask(&t) {
+		t.ResumeCondition = "旧研究模式已停用；由外部 Codex 明确取消旧会话后登记新的外部立项接收会话"
 	}
 	return &t, nil
 }

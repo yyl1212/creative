@@ -57,15 +57,16 @@ func lifecycleHTTPFixture(t *testing.T) (*browser, Config) {
 	return b, cfg
 }
 
-func approvalHTTPValues() url.Values {
-	v := url.Values{"version": {"1"}, "verification_id": {"1"}, "reviewed_evidence": {"e1", "e2", "e3"}, "review_notes": {"已逐条核对原文"}, "monetization": {"free"}, "rationale": {"免费工具支持自助获客"}, "unit_cost": {"0.01"}, "currency": {"USD"}, "unit": {"每次转换"}, "price": {"0"}, "payment_fee": {"0"}, "sustainability": {"按广告收入为零承担资源支出"}, "resource_protection": {"文件限额和并发限制"}, "self_service": {"上传后直接下载结果"}, "gap": {"现有工具缺少字段映射"}, "scope": {"单文件字段转换"}, "exclusions": {"不做定制服务"}, "acceptance": {"样例输出与预期一致"}, "acquisition": {"发布教程和任务入口"}}
+// 已有人工立项记录作为历史数据，继续验证其下游开发管理。
+func seedHistoricalApproval(t *testing.T, b *browser) {
+	t.Helper()
+	a := research.Approval{VerificationID: 1, ReviewedEvidence: []string{"e1", "e2", "e3"}, ReviewNotes: "已逐条核对原文", Monetization: "free", Rationale: "免费工具支持自助获客", UnitCost: "0.01", Currency: "USD", Unit: "每次转换", Price: "0", PaymentFee: "0", Sustainability: "按广告收入为零承担资源支出", ResourceProtection: "文件限额和并发限制", SelfService: "上传后直接下载结果", Gap: "现有工具缺少字段映射", Scope: "单文件字段转换", Exclusions: "不做定制服务", Acceptance: "样例输出与预期一致", Acquisition: "发布教程和任务入口"}
 	for i := 0; i < 3; i++ {
-		prefix := fmt.Sprintf("alternative_%d_", i)
-		for key, value := range map[string]string{"name": fmt.Sprint("替代", i), "url": fmt.Sprintf("https://example.org/tool%d", i), "version": "2026-11", "checked_at": time.Now().UTC().Format("2006-01-02"), "pricing": "USD 5 / month", "result": "亲自操作，缺少指定字段映射"} {
-			v.Set(prefix+key, value)
-		}
+		a.Alternatives = append(a.Alternatives, research.AlternativeReview{Name: fmt.Sprint("替代", i), URL: fmt.Sprintf("https://example.org/tool%d", i), Version: "2026-11", CheckedAt: time.Now().UTC().Format("2006-01-02"), Pricing: "USD 5 / month", Result: "亲自操作，缺少指定字段映射"})
 	}
-	return v
+	if err := b.app.research.ApproveNeed(1, 1, a, "fixture", "local"); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func designHTTPValues() url.Values {
@@ -84,18 +85,14 @@ func TestDevelopmentAdminWorkflow(t *testing.T) {
 		t.Fatal("empty development list", w.Code, w.Body.String())
 	}
 	page := b.request("GET", "/admin/needs/1", nil, nil)
-	if page.Code != 200 || !strings.Contains(page.Body.String(), `name="reviewed_evidence"`) || strings.Contains(page.Body.String(), "<script>") {
-		t.Fatal("approval form unavailable or unescaped", page.Code, page.Body.String())
+	if page.Code != 200 || strings.Contains(page.Body.String(), `name="reviewed_evidence"`) || strings.Contains(page.Body.String(), "<script>") {
+		t.Fatal("retired form visible or unescaped", page.Code, page.Body.String())
 	}
-	values := approvalHTTPValues()
-	values.Set("review_notes", strings.Repeat("x", 5000))
-	values.Set("gorilla.csrf.Token", token(t, page))
-	if w := b.request("POST", "/admin/needs/1/approve", values, nil); w.Code != 303 {
-		t.Fatal("approval", w.Code, w.Body.String())
+	values := url.Values{"gorilla.csrf.Token": {token(t, page)}}
+	if w := b.request("POST", "/admin/needs/1/approve", values, nil); w.Code != 410 {
+		t.Fatal("retired approval", w.Code)
 	}
-	if w := b.request("POST", "/admin/needs/1/approve", values, nil); w.Code != 409 {
-		t.Fatal("stale approval", w.Code)
-	}
+	seedHistoricalApproval(t, b)
 	if w := b.request("GET", "/admin/developments/1/bundle/development", nil, nil); w.Code != 409 {
 		t.Fatal("unconfirmed development bundle", w.Code)
 	}
@@ -177,11 +174,7 @@ func TestDevelopmentHTTPBoundaries(t *testing.T) {
 	if w := b.request("GET", "/admin/needs/1?verification=2", nil, nil); w.Code != 200 || strings.Contains(w.Body.String(), `action="/admin/needs/1/approve"`) {
 		t.Fatal("historical evidence can be approved", w.Code)
 	}
-	values := approvalHTTPValues()
-	values.Set("gorilla.csrf.Token", csrf)
-	if w := b.request("POST", "/admin/needs/1/approve", values, nil); w.Code != 303 {
-		t.Fatal("approval fixture", w.Code, w.Body.String())
-	}
+	seedHistoricalApproval(t, b)
 	if _, err := cfg.DB.Exec(`UPDATE needs SET valid_until=0 WHERE id=1`); err != nil {
 		t.Fatal(err)
 	}

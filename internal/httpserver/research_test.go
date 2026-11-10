@@ -111,7 +111,7 @@ func TestProducerIsolation(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	task, e := b.app.research.CreateTask(p.ID, []string{"self service"}, []string{"en"}, 3, "owner", "local")
+	task, e := b.app.research.CreateProjectTask(p.ID, []string{"self service"}, []string{"en"}, 3, "owner", "local")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -137,13 +137,13 @@ func TestProducerIsolation(t *testing.T) {
 	if w = apiRequest(b.app, "GET", "task", other, nil); w.Code != 200 || !strings.Contains(w.Body.String(), `"task":null`) {
 		t.Fatal("other producer sees task", w.Code, w.Body.String())
 	}
-	if w = apiRequest(b.app, "POST", "batches", secret, httpFixture(t, task.ID)); w.Code != 202 {
+	if w = apiRequest(b.app, "POST", "batches", secret, emptyReportHTTP(t, task.ID)); w.Code != 202 {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	if w = apiRequest(b.app, "GET", "batches/batch-example-001", other, nil); w.Code != 404 {
 		t.Fatal("cross-producer receipt", w.Code)
 	}
-	if w = apiRequest(b.app, "POST", "batches", other, httpFixture(t, task.ID)); w.Code != 404 {
+	if w = apiRequest(b.app, "POST", "batches", other, emptyReportHTTP(t, task.ID)); w.Code != 404 {
 		t.Fatal("cross-producer task", w.Code)
 	}
 	if w = b.request("GET", "/api/research/v1/task", nil, map[string]string{"Authorization": "Bearer " + secret}); w.Code != 421 {
@@ -171,7 +171,7 @@ func TestInvalidBatchHTTP(t *testing.T) {
 	for _, tt := range []struct {
 		body   []byte
 		status int
-	}{{[]byte("{"), 400}, {[]byte(`{"schema_version":"bad"}`), 422}, {bytes.Repeat([]byte("x"), (1<<20)+1), 413}, {bytes.Replace(raw, []byte("strong-wtp.v1"), []byte("old-rules"), 1), 409}} {
+	}{{[]byte("{"), 400}, {[]byte(`{"schema_version":"bad"}`), 422}, {bytes.Repeat([]byte("x"), (1<<20)+1), 413}, {bytes.Replace(raw, []byte("strong-wtp.v1"), []byte("old-rules"), 1), 410}} {
 		w := apiRequest(b.app, "POST", "batches", secret, tt.body)
 		if w.Code != tt.status {
 			t.Fatal("error code", w.Code, w.Body.String())
@@ -180,6 +180,12 @@ func TestInvalidBatchHTTP(t *testing.T) {
 		if e = json.Unmarshal(w.Body.Bytes(), &output); e != nil || output["error"] == nil {
 			t.Fatal("error envelope", w.Body.String())
 		}
+	}
+	if w := apiRequest(b.app, "POST", "batches", secret, raw); w.Code != 410 {
+		t.Fatal("new candidates accepted", w.Code)
+	}
+	if _, e = b.app.research.Receive(p, raw); e != nil {
+		t.Fatal("historical fixture", e)
 	}
 	first := apiRequest(b.app, "POST", "batches", secret, raw)
 	retry := apiRequest(b.app, "POST", "batches", secret, raw)
@@ -271,5 +277,48 @@ func TestReceiptMethodContract(t *testing.T) {
 		if w.Code != 405 || w.Header().Get("Allow") != "GET" {
 			t.Fatalf("%s receipt method=%d allow=%q", method, w.Code, w.Header().Get("Allow"))
 		}
+	}
+}
+
+func emptyReportHTTP(t *testing.T, task string) []byte {
+	t.Helper()
+	var v map[string]any
+	if err := json.Unmarshal(httpFixture(t, task), &v); err != nil {
+		t.Fatal(err)
+	}
+	v["candidates"] = []any{}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+func TestReportAPICompletesWithoutWorker(t *testing.T) {
+	b, cfg := setupResearch(t)
+	p, secret, err := b.app.Auth.CreateProducer("report-agent", "owner", "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := b.app.research.CreateProjectTask(p.ID, []string{"test"}, []string{"en"}, 1, "owner", "local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := emptyReportHTTP(t, task.ID)
+	first := apiRequest(b.app, "POST", "batches", secret, raw)
+	if first.Code != 202 || !strings.Contains(first.Body.String(), `"status":"completed"`) {
+		t.Fatal(first.Code, first.Body.String())
+	}
+	retry := apiRequest(b.app, "POST", "batches", secret, raw)
+	if retry.Code != 202 || first.Body.String() != retry.Body.String() {
+		t.Fatal("report replay", retry.Code)
+	}
+	w := apiRequest(b.app, "GET", "batches/batch-example-001", secret, nil)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"status":"completed"`) || !strings.Contains(w.Body.String(), `"qualified_count":0`) {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var n int
+	if err = cfg.DB.QueryRow("SELECT count(*) FROM research_batches WHERE status!='completed'").Scan(&n); err != nil || n != 0 {
+		t.Fatal(n, err)
 	}
 }

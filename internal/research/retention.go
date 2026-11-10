@@ -41,7 +41,7 @@ func hydrateTask(tx *sql.Tx, t *Task, now time.Time) error {
 	}
 	t.QualifiedCount = n
 	t.RemainingGap = max(0, t.TargetCount-n)
-	t.ShouldContinue = t.Current && t.State == "active" && t.RemainingGap > 0
+	t.ShouldContinue = t.Current && projectTask(t) && t.State == "active" && t.RemainingGap > 0
 	return nil
 }
 func (s *Service) Maintenance(now time.Time) error {
@@ -55,7 +55,6 @@ func (s *Service) Maintenance(now time.Time) error {
 		args  []any
 	}{
 		{"UPDATE needs SET status='pending',version=version+1 WHERE status='qualified' AND (valid_until<=? OR rules_version!=?)", []any{now.Unix(), rulesVersion}},
-		{"UPDATE research_tasks SET state='active',version=version+1,updated_at=? WHERE is_current=1 AND state='waiting_for_signals' AND updated_at<=?", []any{now.Unix(), now.Add(-24 * time.Hour).Unix()}},
 		{"UPDATE research_batches SET payload=X'',raw_purged=1,version=version+1 WHERE created_at<=? AND raw_purged=0", []any{now.AddDate(0, 0, -30).Unix()}},
 		{"UPDATE need_sources SET raw=NULL WHERE fetched_at<=?", []any{now.AddDate(0, 0, -30).Unix()}},
 		{"DELETE FROM need_sources WHERE fetched_at<=?", []any{now.AddDate(0, 0, -180).Unix()}},

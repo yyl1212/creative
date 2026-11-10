@@ -21,13 +21,11 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/gorilla/csrf"
 	"github.com/yyl1212/creative/internal/auth"
-	"github.com/yyl1212/creative/internal/model"
 	"github.com/yyl1212/creative/internal/research"
 	adminweb "github.com/yyl1212/creative/web/admin"
 )
 
 type Config struct {
-	RuntimeModel   model.Config
 	DB             *sql.DB
 	Origin         string
 	ResearchOrigin string
@@ -36,7 +34,6 @@ type Config struct {
 	TrustedProxy   string
 }
 type App struct {
-	runtimeModel model.Config
 	Auth         *auth.Service
 	Sessions     *scs.SessionManager
 	db           *sql.DB
@@ -54,32 +51,29 @@ type App struct {
 	apiSlots     chan struct{}
 }
 type view struct {
-	Report           *research.DailyReport
-	Backup           *research.BackupStatus
-	SavedModel       *research.SavedModelConfig
-	RuntimeModel     model.Config
-	CSRF             template.HTML
-	Error            string
-	Username         string
-	Needs            int
-	Qualified        int
-	Completed        int
-	Products         int
-	Page             string
-	Secret           string
-	APIEnabled       bool
-	Producers        []auth.Producer
-	Tasks            []research.Task
-	Batches          []research.BatchSummary
-	Batch            *research.BatchDetail
-	NeedItems        []research.Need
-	Need             *research.Need
-	Developments     []research.Development
-	Development      *research.Development
-	AlternativeSlots []int
-	UsageRecords     []research.UsageRecord
-	UsageTotals      []research.UsageTotal
-	NextBefore       int
+	Report       *research.DailyReport
+	Backup       *research.BackupStatus
+	CSRF         template.HTML
+	Error        string
+	Username     string
+	Needs        int
+	Qualified    int
+	Completed    int
+	Products     int
+	Page         string
+	Secret       string
+	APIEnabled   bool
+	Producers    []auth.Producer
+	Tasks        []research.Task
+	Batches      []research.BatchSummary
+	Batch        *research.BatchDetail
+	NeedItems    []research.Need
+	Need         *research.Need
+	Developments []research.Development
+	Development  *research.Development
+	UsageRecords []research.UsageRecord
+	UsageTotals  []research.UsageTotal
+	NextBefore   int
 }
 
 func New(cfg Config) (*App, error) {
@@ -144,7 +138,6 @@ func New(cfg Config) (*App, error) {
 		http.Error(w, "会话服务暂不可用", http.StatusInternalServerError)
 	}
 	a := &App{Auth: service, Sessions: sessions, db: cfg.DB, host: u.Host, origin: u.Scheme + "://" + u.Host, secure: u.Scheme == "https", proxy: proxy, productCount: len(catalog), templates: templates, sessionStore: sessionStore, research: researchService, apiHost: apiHost, apiSlots: make(chan struct{}, 8)}
-	a.runtimeModel = cfg.RuntimeModel
 	mux := http.NewServeMux()
 	a.operationsRoutes(mux)
 	mux.HandleFunc("GET /admin/login", a.loginPage)
@@ -283,7 +276,7 @@ func (a *App) overview(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	data := view{Username: user.Username, Products: a.productCount, Page: "overview"}
+	data := view{Username: user.Username, Products: a.productCount, Page: "overview", APIEnabled: a.apiHost != ""}
 	var err error
 	data.Needs, data.Qualified, data.Completed, err = a.research.Counts()
 	if err != nil {
