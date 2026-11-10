@@ -1,34 +1,10 @@
-<!doctype html>
-<html lang="zh">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="robots" content="noindex,nofollow">
-  <title>工作区总览 · Creative</title>
-  <link rel="stylesheet" href="/admin/static/admin.css">
-</head>
-<body>
-  <a class="skip" href="#main">跳到主要内容</a>
-  <header class="top"><div class="top-inner">
-    <a class="brand" href="/admin/"><span class="brand-symbol" aria-hidden="true">C</span>Creative</a>
-    <span class="workspace-label">管理工作区</span>
-    <div class="identity"><span class="username">{{.Username}}</span><form method="post" action="/admin/logout">{{.CSRF}}<button class="quiet" type="submit">退出登录</button></form></div>
-  </div></header>
-  <main id="main" class="dashboard" tabindex="-1">
-    {{template "research-nav" .}}
-    <div class="page-heading"><h1>总览</h1><p>查看需求与产品的实际进展。</p></div>
-    <section class="metrics" aria-label="实际数量">
-      <article><h2>需求总数</h2><strong data-count="{{.Needs}}">{{.Needs}}</strong><p>全部已记录需求</p></article>
-      <article><h2>历史合格需求</h2><strong data-count="{{.Qualified}}">{{.Qualified}}</strong><p>旧流程留下的有效资料</p></article>
-      <article><h2>已完成需求</h2><strong data-count="{{.Completed}}">{{.Completed}}</strong><p>已通过生产核验的需求</p></article>
-      <article><h2>产品数量</h2><strong data-count="{{.Products}}">{{.Products}}</strong><p>公开清单中的产品</p></article>
-    </section>
-    <section class="panel" aria-labelledby="service-title">
-      <div class="panel-heading"><h2 id="service-title">服务与运营</h2><p>尚未接入的数据不会显示为 0。</p></div>
-      <div class="status-row"><div><h3>外部数据接入</h3><p>Codex 完成搜寻、分析与立项判断，网站接收并管理结果</p></div><span class="status">{{if .APIEnabled}}已启用{{else}}未启用{{end}}</span></div>
-      <div class="status-row"><div><h3>访问量、收入与费用</h3><p>费用记录可在「费用与用量」查看，访问量与收入尚未接入</p></div><span class="status">未接入 / 未知</span></div>
-    </section>
-    <p class="footnote dashboard-note">从外部已立项资料开始，在开发工作区确认方案并登记交付。生产发布需通过受控核验后才计入完成。</p>
-  </main>
-</body>
-</html>
+{{template "research-header" .}}
+<div class="page-heading"><h1>总览</h1><p>查看需求、产品与当天进展。</p></div>
+<section class="metrics" aria-label="累计数量">
+  <article><h2>需求总数</h2><strong data-count="{{.Needs}}">{{.Needs}}</strong><p>全部已记录需求，含历史资料</p></article>
+  <article><h2>已完成需求</h2><strong data-count="{{.Completed}}">{{.Completed}}</strong><p>已通过生产核验的需求</p></article>
+  <article><h2>产品数量</h2><strong data-count="{{.Products}}">{{.Products}}</strong><p>公开清单中的产品</p></article>
+</section>
+<section class="panel" aria-label="数据接收状态"><div class="status-row"><div><h3>外部数据接入</h3><p>Codex 完成搜寻与立项判断，网站管理交付结果。</p></div><span class="status">{{if .APIEnabled}}已启用{{else}}未启用{{end}}</span></div></section>
+{{template "report-summary" .}}
+{{template "research-footer" .}}

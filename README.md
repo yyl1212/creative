@@ -4,7 +4,7 @@
 
 定时搜寻保持禁用。已提供 Codex 提示词任务、新立项包契约、完整需求目录接口和固定 outbox 传输工具；真实联网及跨运行验收通过前不启用。见 [外部模型立项运行说明](docs/agent-project-operations.md)、[验证记录](docs/agent-project-validation.md)；旧流程见 [运行手册](docs/research-task-operations.md)。
 
-管理后台提供需求池、开发工作区、导入批次、接收记录、每日报告、费用与用量及智能体接入权限管理。搜寻、分析和立项判断全部由外部 Codex 完成；网站不加载模型配置、不抓取原文、不消费旧研究队列。发布与备份恢复仍通过受控 CLI，维护循环保留数据清理和最近 7 份一致性备份。见 [运维手册](docs/operations.md)。
+管理后台主导航为总览、需求池、开发工作区、导入记录、费用与用量五项。日期日报和备份状态并入总览，接收会话并入导入记录，智能体接入位于页头次级入口；开发技术表单可展开登记。搜寻、分析和立项判断全部由外部 Codex 完成；网站不加载模型配置、不抓取原文、不消费旧研究队列。发布与备份恢复仍通过受控 CLI，维护循环保留数据清理和最近 7 份一致性备份。见 [运维手册](docs/operations.md)。
 
 ## 本地运行
 
@@ -58,15 +58,15 @@ CGO_ENABLED=0 go run ./cmd/creative-admin migrate
 
 公开产物只读取三项公开配置；后台/研究数据不进入 Astro。后台不接受 Bearer token 作为管理员凭证。写操作需要 CSRF，GET 注销不生效。会话用 SCS + SQLite 持久化，30 分钟空闲/12 小时绝对有效期，登录轮换、注销销毁。HTTPS 配置启用 Secure/HttpOnly/host-only Cookie。后台私有响应 no-store/noindex，模板自动转义，无第三方脚本。
 
-当前总览的需求/合格/完成数量来自 SQLite，产品来自公开清单，不代表生产发布已核验。缺失运营指标显示“未接入 / 未知”。生产代理必须保持原管理 Host、覆盖 X-Real-IP 并限制后台直连；TLS 和代理部署另行验收，本轮未部署。
+当前总览的需求和完成数量来自 SQLite，产品来自公开清单；完成数量仅计通过生产核验的需求。未接入的流量和收入不展示，历史合格资料仍保存在需求池。生产代理必须保持原管理 Host、覆盖 X-Real-IP 并限制后台直连；TLS 和代理部署另行验收，本轮未部署。
 
 ## 外部研究结果接收
 
 1. 在「智能体接入」登记 Codex 并私下保存一次展示的 Bearer token。研究 API 默认关闭，启用时必须使用与管理后台不同的 Host。
-2. 外部 Codex 在获得授权后，通过 `creative-admin intake-create` 登记接收主题、语言和目标。创建/取消/恢复会话不执行搜寻，也不会启用 Codex 日程；完整命令见 [运行说明](docs/agent-project-operations.md)。后台「接收记录」仅展示状态。
+2. 外部 Codex 在获得授权后，通过 `creative-admin intake-create` 登记接收主题、语言和目标。创建/取消/恢复会话不执行搜寻，也不会启用 Codex 日程；完整命令见 [运行说明](docs/agent-project-operations.md)。后台「导入记录」中的接收会话只读展示状态。
 3. Codex 读取 `GET /api/research/v1/task` 与 `GET /api/research/v1/catalog`，完成搜索、原文分析、去重和立项判断。通过后按 [立项包契约](schemas/project-package.v1.schema.json) 提交 `POST /api/research/v1/projects`，直接登记为已立项、待开发设计。
 4. 无通过项目时，允许提交 `POST /api/research/v1/batches` 的空 `candidates=[]` 运行报告。新报告仅接受活动且有缺口的外部立项会话，同步保存用量与状态并返回 `completed`，不触发站内核验。新非空旧候选包返回 410。
-5. 通过批次回执确认完成，在「导入批次」「需求池」「开发工作区」管理资料。网站不自动恢复等待或暂停会话；取消/恢复由外部 Codex 按授权通过私有 CLI 完成。
+5. 通过批次回执确认完成，在「导入记录」「需求池」「开发工作区」管理资料。网站不自动恢复等待或暂停会话；取消/恢复由外部 Codex 按授权通过私有 CLI 完成。
 
 同一身份与批次 ID 的原字节重试返回原接收回执，不同字节 409；旧包即使已取消也可查询和原样重试。旧任务的 `should_continue` 固定为 false。已有队列保留为历史记录，不再继续执行。旧后台研究写入口返回 410，旧模型设置书签跳转费用页；无需数据库迁移。
 
@@ -124,3 +124,5 @@ docs/                   中文方案、计划、运维与验收记录
 ```
 
 范围按 [敏捷开发计划](docs/superpowers/plans/2026-11-09-creative-agile-delivery.md) 推进；迭代 3 离线接收/核验闭环已实现；定时任务真实接入和开发交接属于后续迭代。无合格真实需求时不预建业务工具。
+
+管理页面旧地址 `/admin/reports` 与 `/admin/tasks` 仍可访问，分别展示合并后的总览和导入记录；日期筛选、批次分页、原始包、历史证据与原权限边界保持。

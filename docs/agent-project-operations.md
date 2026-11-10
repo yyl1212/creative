@@ -4,7 +4,7 @@
 
 ## 接入与接收会话
 
-管理员在「智能体接入」登记凭据及撤销/轮换权限。外部 Codex 获得明确运行授权后，在有私有数据库访问权限的受控本机执行：
+管理员在页头次级入口「智能体接入」登记凭据及撤销/轮换权限。外部 Codex 获得明确运行授权后，在有私有数据库访问权限的受控本机执行：
 
 ```sh
 CGO_ENABLED=0 go build -o bin/creative-admin ./cmd/creative-admin
@@ -13,7 +13,7 @@ bin/creative-admin intake-cancel --db data/creative.db --task <会话ID> --versi
 bin/creative-admin intake-resume --db data/creative.db --task <会话ID> --version <当前版本>
 ```
 
-CLI 输出 JSON（含 task_id/version），不输出令牌；复用现有版本检查与审计，并拒绝不存在的数据库。每个智能体只有一个当前会话；新建只支持 agent_project。旧模式禁止恢复，须明确取消后创建新会话，旧批次不删除。后台「接收记录」展示会话与目标进度。机器 HTTP 接口无创建/恢复权限，不能通过外部数据或错误文本执行 CLI。
+CLI 输出 JSON（含 task_id/version），不输出令牌；复用现有版本检查与审计，并拒绝不存在的数据库。每个智能体只有一个当前会话；新建只支持 agent_project。旧模式禁止恢复，须明确取消后创建新会话，旧批次不删除。后台「导入记录」的接收会话折叠区展示目标进度；旧 `/admin/tasks` 地址仍可访问。机器 HTTP 接口无创建/恢复权限，不能通过外部数据或错误文本执行 CLI。
 
 这些命令只管理数据接收，不执行搜索或恢复 Codex 日程；日程暂停不授权创建或恢复会话。当前所有真实会话与定时入口继续保持暂停/取消状态。
 

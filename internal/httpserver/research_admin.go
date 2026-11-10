@@ -19,7 +19,7 @@ func (a *App) researchRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/producers", a.createProducer)
 	mux.HandleFunc("POST /admin/producers/{id}/rotate", a.rotateProducer)
 	mux.HandleFunc("POST /admin/producers/{id}/revoke", a.revokeProducer)
-	mux.HandleFunc("GET /admin/tasks", a.tasksPage)
+	mux.HandleFunc("GET /admin/tasks", a.batchesPage)
 	mux.HandleFunc("POST /admin/tasks", a.retiredResearchAction)
 	mux.HandleFunc("POST /admin/tasks/{id}/{action}", a.retiredResearchAction)
 	mux.HandleFunc("GET /admin/batches", a.batchesPage)
@@ -168,18 +168,6 @@ func (a *App) revokeProducer(w http.ResponseWriter, r *http.Request) {
 	}
 	http.Redirect(w, r, "/admin/producers", http.StatusSeeOther)
 }
-func (a *App) tasksPage(w http.ResponseWriter, r *http.Request) {
-	user, ok := a.current(w, r)
-	if !ok {
-		return
-	}
-	tasks, err := a.research.Tasks()
-	if err != nil {
-		a.adminResearchError(w, r, user, err)
-		return
-	}
-	a.render(w, r, "tasks.html", 200, view{Username: user.Username, Page: "tasks", Tasks: tasks, APIEnabled: a.apiHost != ""})
-}
 func (a *App) retiredResearchAction(w http.ResponseWriter, r *http.Request) {
 	user, ok := a.current(w, r)
 	if !ok {
@@ -206,7 +194,12 @@ func (a *App) batchesPage(w http.ResponseWriter, r *http.Request) {
 		a.adminResearchError(w, r, user, err)
 		return
 	}
-	a.render(w, r, "batches.html", 200, view{Username: user.Username, Page: "batches", Batches: batches, NextBefore: next})
+	tasks, err := a.research.Tasks()
+	if err != nil {
+		a.adminResearchError(w, r, user, err)
+		return
+	}
+	a.render(w, r, "batches.html", 200, view{Username: user.Username, Page: "batches", Batches: batches, NextBefore: next, Tasks: tasks, APIEnabled: a.apiHost != ""})
 }
 func (a *App) batchPage(w http.ResponseWriter, r *http.Request) {
 	user, ok := a.current(w, r)

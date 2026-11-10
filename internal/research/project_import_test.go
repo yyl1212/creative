@@ -60,6 +60,10 @@ func TestProjectImportCreatesApprovedDevelopment(t *testing.T) {
 	if err != nil || string(first) != string(second) {
 		t.Fatalf("retry: %v", err)
 	}
+	report, err := s.DailyReport("")
+	if err != nil || report.Approved != 1 {
+		t.Fatalf("import or replay miscounted in daily report: %+v %v", report, err)
+	}
 	r, err := s.Receipt(p, "project-one")
 	if err != nil || r.Status != "completed" || r.QualifiedCount != 1 || r.TaskState != "target_reached" || r.ShouldContinue {
 		t.Fatalf("receipt %+v %v", r, err)
