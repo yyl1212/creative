@@ -25,9 +25,11 @@ type AgentReview struct {
 }
 type projectReview struct {
 	AgentReview
-	Verdict         string `json:"verdict"`
-	CatalogRevision string `json:"catalog_revision"`
-	TaskKey         string `json:"task_key"`
+	Evaluation      *Evaluation `json:"evaluation,omitempty"`
+	ValidUntil      *time.Time  `json:"qualification_valid_until,omitempty"`
+	Verdict         string      `json:"verdict"`
+	CatalogRevision string      `json:"catalog_revision"`
+	TaskKey         string      `json:"task_key"`
 	Evidence        []struct {
 		ID      string `json:"evidence_id"`
 		Valid   bool   `json:"valid"`
@@ -109,7 +111,7 @@ func (s *Service) parseProject(raw []byte) (batch, projectReview, error) {
 	}
 	compiler := jsonschema.NewCompiler()
 	compiler.AssertFormat()
-	for _, name := range []string{"demand-batch.v1.schema.json", "project-package.v1.schema.json"} {
+	for _, name := range []string{"demand-batch.v1.schema.json", "agent-review.v1.schema.json", "project-package.v1.schema.json"} {
 		data, e := schemas.Files.ReadFile(name)
 		if e != nil {
 			return b, p, e
@@ -155,7 +157,13 @@ func (s *Service) parseProject(raw []byte) (batch, projectReview, error) {
 	if secretPattern.MatchString(jsonText(doc)) {
 		return b, p, fail(422, "secret_in_package", "/", "立项包不能包含凭据")
 	}
-	if e = validApproval(p.Approval); e != nil {
+	if !supportedRules(b.RulesVersion) {
+		return b, p, fail(409, "rules_changed", "/rules_version", "不支持的立项规则")
+	}
+	if b.RulesVersion == opportunityRulesVersion && b.Candidates[0].Monetization != p.Approval.Monetization {
+		return b, p, lifecycleInput("候选与立项的变现方式不一致")
+	}
+	if e = validApprovalForRules(p.Approval, b.RulesVersion); e != nil {
 		return b, p, e
 	}
 	if p.Approval.VerificationID != 0 || b.RunReport.State != "submitted" {
@@ -165,8 +173,15 @@ func (s *Service) parseProject(raw []byte) (batch, projectReview, error) {
 }
 
 // 模型已经作出业务判断；这里仅验证引用关系并把原样提交的结论映射到存储结构。
-func projectDecision(c candidate, p projectReview, now time.Time) (Decision, []BoundSource, error) {
-	d := Decision{Outcome: "qualified", Reasons: []string{}, TaskKey: normalized(p.TaskKey), TaskFingerprint: taskFingerprint(c), ValidUntil: p.ReviewedAt.AddDate(0, 0, 30), Agent: &p.AgentReview}
+func projectDecision(c candidate, p projectReview, rule string, now time.Time) (Decision, []BoundSource, error) {
+	d := Decision{Outcome: "qualified", Reasons: []string{}, TaskKey: normalized(p.TaskKey), TaskFingerprint: taskFingerprint(c), ValidUntil: p.ReviewedAt.AddDate(0, 0, 30), Agent: &p.AgentReview, Evaluation: p.Evaluation, Monetization: c.Monetization}
+	v2 := rule == opportunityRulesVersion
+	if v2 {
+		if p.ValidUntil == nil || !p.ValidUntil.After(now) || p.ValidUntil.After(d.ValidUntil) {
+			return d, nil, lifecycleInput("立项资格截止须有效且不超过审查后30天")
+		}
+		d.ValidUntil = *p.ValidUntil
+	}
 	if len(p.Evidence) != len(c.Evidence) {
 		return d, nil, lifecycleInput("逐条结论与来源数量必须一致")
 	}
@@ -200,26 +215,31 @@ func projectDecision(c candidate, p projectReview, now time.Time) (Decision, []B
 		if e != nil || observed.After(now) || observed.After(p.ReviewedAt) {
 			return d, nil, lifecycleInput("来源观察时间无效")
 		}
-		var published time.Time
-		if ev.PublishedAt != nil {
-			published, e = time.Parse(time.RFC3339, *ev.PublishedAt)
-			if e != nil || published.After(observed) {
-				return d, nil, lifecycleInput("原文时间无效")
+		published, e := evidenceDate(ev, v2)
+		if e != nil || published.After(observed) {
+			return d, nil, lifecycleInput("原文时间无效")
+		}
+		if v2 {
+			if _, e = discussionKey(ev); e != nil {
+				return d, nil, lifecycleInput(e.Error())
 			}
 		}
 		author := ""
 		if ev.AuthorRef != nil {
 			author = *ev.AuthorRef
 		}
-		if ed.Valid && (strings.TrimSpace(author) == "" || published.IsZero()) {
+		if ed.Valid && (strings.TrimSpace(author) == "" || !v2 && published.IsZero()) {
 			return d, nil, lifecycleInput("有效来源必须有作者和明确发布时间")
 		}
 		if ed.Payment {
+			if published.IsZero() {
+				return d, nil, lifecycleInput("近期付款证据须有可定位日期")
+			}
 			expiry := published.AddDate(1, 0, 0)
 			if !expiry.After(now) {
 				return d, nil, lifecycleInput("付费来源已过期")
 			}
-			if expiry.Before(d.ValidUntil) {
+			if !v2 && expiry.Before(d.ValidUntil) {
 				d.ValidUntil = expiry
 			}
 		}
@@ -232,10 +252,28 @@ func projectDecision(c candidate, p projectReview, now time.Time) (Decision, []B
 		ed.Site = site
 		ed.Fingerprint = fingerprint(ev.URL + "\n" + source.Normalize(ev.Quote))
 		d.Evidence = append(d.Evidence, ed)
-		sources = append(sources, BoundSource{ID: ev.ID, Document: source.Document{URL: ev.URL, Site: site, Hash: fingerprint(ev.Quote), FetchedAt: observed}, Block: source.Block{Text: ev.Quote, Author: author, AuthorRef: author, PublishedAt: published}})
+		bound := BoundSource{ID: ev.ID, Document: source.Document{URL: ev.URL, Site: site, Hash: fingerprint(ev.Quote), FetchedAt: observed}, Block: source.Block{Text: ev.Quote, Author: author, AuthorRef: author, PublishedAt: published}, DiscussionURL: ev.DiscussionURL}
+		if ev.PublishedDate != nil {
+			bound.PublishedDate = *ev.PublishedDate
+			bound.Block.PublishedAt = time.Time{}
+		}
+		sources = append(sources, bound)
 	}
 	if len(reviewed) != 0 {
 		return d, nil, lifecycleInput("复核来源不存在")
+	}
+	if v2 {
+		valid := map[string]bool{}
+		for _, e := range d.Evidence {
+			valid[e.ID] = e.Valid
+		}
+		failures, e := evaluationFailures(c, p.Evaluation, valid, valid)
+		if e != nil {
+			return d, nil, lifecycleInput(e.Error())
+		}
+		if len(failures) > 0 {
+			return d, nil, lifecycleInput(strings.Join(failures, ","))
+		}
 	}
 	return d, sources, nil
 }
@@ -275,7 +313,7 @@ func (s *Service) ImportProject(p auth.Producer, raw []byte) ([]byte, error) {
 	if review.ReviewedAt.After(now) || review.ReviewedAt.Before(now.AddDate(0, 0, -30)) {
 		return nil, lifecycleInput("审查时间须在最近 30 天内")
 	}
-	decision, sources, e := projectDecision(c, review, now)
+	decision, sources, e := projectDecision(c, review, b.RulesVersion, now)
 	if e != nil {
 		return nil, e
 	}
@@ -342,7 +380,7 @@ func (s *Service) ImportProject(p auth.Producer, raw []byte) ([]byte, error) {
 		return nil, fail(409, "project_alias_conflict", "/candidates/0/external_id", "该外部 ID 已存在，请明确复核原需求")
 	}
 	if needID == 0 {
-		r, err := tx.Exec("INSERT INTO needs(status,title,task,task_key,task_fingerprint,rules_version,verified_at,valid_until,decision,updated_at) VALUES ('qualified',?,?,?,?,?,?,?,?,?)", c.Title, c.Job, decision.TaskKey, decision.TaskFingerprint, rulesVersion, now.Unix(), decision.ValidUntil.Unix(), jsonText(decision), now.Unix())
+		r, err := tx.Exec("INSERT INTO needs(status,title,task,task_key,task_fingerprint,rules_version,verified_at,valid_until,decision,updated_at) VALUES ('qualified',?,?,?,?,?,?,?,?,?)", c.Title, c.Job, decision.TaskKey, decision.TaskFingerprint, b.RulesVersion, now.Unix(), decision.ValidUntil.Unix(), jsonText(decision), now.Unix())
 		if err != nil {
 			return nil, err
 		}
@@ -352,7 +390,7 @@ func (s *Service) ImportProject(p auth.Producer, raw []byte) ([]byte, error) {
 		}
 		needID = int(id)
 	} else {
-		if _, e = tx.Exec("UPDATE needs SET status='qualified',title=?,task=?,task_key=?,task_fingerprint=?,rules_version=?,verified_at=?,valid_until=?,decision=?,updated_at=?,version=? WHERE id=?", c.Title, c.Job, decision.TaskKey, decision.TaskFingerprint, rulesVersion, now.Unix(), decision.ValidUntil.Unix(), jsonText(decision), now.Unix(), version, needID); e != nil {
+		if _, e = tx.Exec("UPDATE needs SET status='qualified',title=?,task=?,task_key=?,task_fingerprint=?,rules_version=?,verified_at=?,valid_until=?,decision=?,updated_at=?,version=? WHERE id=?", c.Title, c.Job, decision.TaskKey, decision.TaskFingerprint, b.RulesVersion, now.Unix(), decision.ValidUntil.Unix(), jsonText(decision), now.Unix(), version, needID); e != nil {
 			return nil, e
 		}
 	}

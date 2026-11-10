@@ -17,10 +17,12 @@ import (
 )
 
 type BoundSource struct {
-	ID       string          `json:"evidence_id"`
-	Document source.Document `json:"document"`
-	Block    source.Block    `json:"bound_block"`
-	Issue    string          `json:"issue"`
+	ID            string          `json:"evidence_id"`
+	Document      source.Document `json:"document"`
+	Block         source.Block    `json:"bound_block"`
+	Issue         string          `json:"issue"`
+	PublishedDate string          `json:"published_date,omitempty"`
+	DiscussionURL string          `json:"discussion_url,omitempty"`
 }
 type EvidenceDecision struct {
 	ID          string `json:"evidence_id"`
@@ -34,6 +36,8 @@ type EvidenceDecision struct {
 }
 type Decision struct {
 	Agent           *AgentReview       `json:"agent_review,omitempty"`
+	Evaluation      *Evaluation        `json:"evaluation,omitempty"`
+	Monetization    string             `json:"monetization,omitempty"`
 	Outcome         string             `json:"outcome"`
 	Reasons         []string           `json:"reasons"`
 	Evidence        []EvidenceDecision `json:"evidence"`

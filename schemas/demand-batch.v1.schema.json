@@ -184,6 +184,18 @@
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 4000
+                },
+                "published_date": {
+                  "type": "string",
+                  "format": "date",
+                  "minLength": 10,
+                  "maxLength": 10
+                },
+                "discussion_url": {
+                  "type": "string",
+                  "format": "uri",
+                  "pattern": "^https?://",
+                  "maxLength": 2048
                 }
               },
               "required": [
@@ -198,7 +210,23 @@
                 "conditions",
                 "unmet_need"
               ],
-              "additionalProperties": false
+              "additionalProperties": false,
+              "allOf": [
+                {
+                  "if": {
+                    "required": [
+                      "published_date"
+                    ]
+                  },
+                  "then": {
+                    "properties": {
+                      "published_at": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              ]
             },
             "maxItems": 50
           },

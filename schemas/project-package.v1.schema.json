@@ -133,6 +133,13 @@
             "version"
           ],
           "additionalProperties": false
+        },
+        "evaluation": {
+          "$ref": "agent-review.v1.schema.json#/$defs/evaluation"
+        },
+        "qualification_valid_until": {
+          "type": "string",
+          "format": "date-time"
         }
       },
       "required": [
@@ -160,5 +167,59 @@
     "run_report",
     "project"
   ],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "rules_version": {
+            "const": "opportunity.v2"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "project": {
+            "required": [
+              "evaluation",
+              "qualification_valid_until"
+            ]
+          },
+          "candidates": {
+            "items": {
+              "properties": {
+                "evidence": {
+                  "items": {
+                    "required": [
+                      "discussion_url"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "project": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "evaluation"
+                  ]
+                },
+                {
+                  "required": [
+                    "qualification_valid_until"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
 }

@@ -4,7 +4,8 @@
   "prompt": "prompts/project-research-task.v1.md",
   "schema": "schemas/project-package.v1.schema.json",
   "supported_rules_versions": [
-    "strong-wtp.v1"
+    "strong-wtp.v1",
+    "opportunity.v2"
   ],
   "allowed_model_providers": [
     "openai",
