@@ -27,6 +27,24 @@ approval 字段：verification_id（填 0）、reviewed_evidence、review_notes�
 
 模型判断记录包括厂商、模型、审查日期、判断摘要、去重依据和逐条结论。来源摘要只保存执行端提交的原文引用，SHA-256 对应该引用，不代表网站重新抓取了原网页。
 
+## 模型审查门禁
+
+外部智能体每次只输出一个 `schemas/agent-review.v1.schema.json` 对象。候选复用 demand-batch 的结构；其他必填字段及证据含义见提示词「固定模型输出与计数」。不再读取自由层级的 `overall/safe_to_import_ids` 或文字人数。模型负责语义判断，CLI 只验证严格 JSON、引用及去重算术；它无数据库、网络、模型调用或定时副作用。
+
+```sh
+CGO_ENABLED=0 go build -o bin/creative-admin ./cmd/creative-admin
+bin/creative-admin review-check --file <私有审查文件>
+bin/creative-admin review-check --file <最终私有审查文件> --project <私有立项包>
+```
+
+只有命令成功退出才读取 stdout JSON：`verdict` 是模型结论，`eligible` 是引用算术是否达到门槛，`counts` 为 independent_users / original_sites / payment_users / price_or_spend_users，`evidence` 为逐条标记，`failures` 列出未达标项。`review_sha256` 和可选 `project_sha256` 对应输入原字节。needs_evidence/rejected 的合法审查可以检查成功；它们不授权导入。approved 必须达到计数门槛，随后必须带 --project 检查且与 stage 冻结哈希一致。
+
+人数按模型 user_key 集合累计，补充留言不会漏算或多算。同人相关证据组可分别提供未满足点和付款原话，按整组结算，不跨人借用痛点；模型负责撤回已解决的旧痛点判断。同站作者拆成多个 key 会拒绝；跨站同人由模型使用同一 key，无法确认保留未知。站点复用注册域归并。有效付费须有原文引用、模型确认条件且未满一年；明确条件式意愿与实际消费分开，消费未提供金额仍有效。具体价格需有金额/币种/单位依据，未知信息不补造。未知发布时间保守排除；日期解析不尝试猜测。
+
+命令拒绝截断、重复键、缺字段、错误层级、未知字段、重复/遗漏证据 ID、未被原文支持的引用，以及候选/模型记录/目录/标记与包不一致。它不修改文件、不修补 JSON，不将机械门槛等同于业务立项；完整原文、身份、时间和反证仍必须由模型复核。请求中附完整 schema，并只给单候选必要上下文；JSON mode 和完成标记不替代本地校验。
+
+API 未完成/拒绝/空内容直接失败；格式错误保留原始响应，让模型至多额外两次重新生成完整对象，仍失败则 paused_service。每次真实调用独立记录用量。本版门禁由外部 Codex 提示词执行；网站 API 不要求这个私有文件，旧包/旧 outbox 仍按原字节查询与重试。若执行端不遵守提示词，网站不会替其作语义或人数判断。
+
 ## 空报告与停用的旧入口
 
 无通过项目时，以 demand-batch.v1 提交 candidates=[] 的真实运行报告到 `/api/research/v1/batches`。仅当前 active 且有缺口的 agent_project 会话可提交新报告；submitted 保持活动，waiting_for_signals/paused_service 将会话置为对应状态，均与批次和用量同事务保存。报告立即 completed，不需要 worker。新非空旧候选包返回 410，已接收旧包优先按原字节返回原回执，冲突仍为 409。

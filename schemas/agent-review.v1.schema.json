@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Creative 外部单候选模型审查 v1",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "creative.agent-review.v1"
+    },
+    "provider": {
+      "enum": [
+        "openai",
+        "deepseek"
+      ]
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "reasoning": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8000
+    },
+    "deduplication": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8000
+    },
+    "catalog_revision": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "task_key": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240
+    },
+    "verdict": {
+      "enum": [
+        "approved",
+        "needs_evidence",
+        "rejected"
+      ]
+    },
+    "self_service": {
+      "type": "boolean"
+    },
+    "distinct_from_existing": {
+      "type": "boolean"
+    },
+    "candidate": {
+      "$ref": "demand-batch.v1.schema.json#/properties/candidates/items"
+    },
+    "evidence": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "properties": {
+          "evidence_id": {
+            "$ref": "demand-batch.v1.schema.json#/properties/candidates/items/properties/evidence/items/properties/evidence_id"
+          },
+          "user_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "relevant": {
+            "type": "boolean"
+          },
+          "original": {
+            "type": "boolean"
+          },
+          "direct_user": {
+            "type": "boolean"
+          },
+          "unmet_quote": {
+            "type": "string",
+            "maxLength": 12000
+          },
+          "payment_quote": {
+            "type": "string",
+            "maxLength": 12000
+          },
+          "price_quote": {
+            "type": "string",
+            "maxLength": 12000
+          },
+          "spend_quote": {
+            "type": "string",
+            "maxLength": 12000
+          },
+          "conditions_supported": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000
+          }
+        },
+        "required": [
+          "evidence_id",
+          "user_key",
+          "relevant",
+          "original",
+          "direct_user",
+          "unmet_quote",
+          "payment_quote",
+          "price_quote",
+          "spend_quote",
+          "conditions_supported",
+          "reason"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "rules_version": {
+      "const": "strong-wtp.v1"
+    }
+  },
+  "required": [
+    "schema_version",
+    "provider",
+    "model",
+    "reviewed_at",
+    "reasoning",
+    "deduplication",
+    "catalog_revision",
+    "task_key",
+    "verdict",
+    "self_service",
+    "distinct_from_existing",
+    "candidate",
+    "evidence",
+    "rules_version"
+  ],
+  "additionalProperties": false
+}

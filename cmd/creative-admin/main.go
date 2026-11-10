@@ -46,10 +46,12 @@ func password(stdin bool) (string, error) {
 }
 func run() error {
 	if len(os.Args) < 2 {
-		return errors.New("用法：creative-admin migrate|create-admin|reset-password|disable-admin|intake-create|intake-cancel|intake-resume|backup|restore|report|release-prepare|release-verify|release-rollback；子命令 --help 查看参数")
+		return errors.New("用法：creative-admin migrate|create-admin|reset-password|disable-admin|intake-create|intake-cancel|intake-resume|review-check|backup|restore|report|release-prepare|release-verify|release-rollback；子命令 --help 查看参数")
 	}
 	command := os.Args[1]
 	switch command {
+	case "review-check":
+		return reviewCheck(os.Args[2:], os.Stdout)
 	case "intake-create", "intake-cancel", "intake-resume":
 		return intake(command, os.Args[2:])
 	case "backup", "restore", "report", "release-prepare", "release-verify", "release-rollback":
