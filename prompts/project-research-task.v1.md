@@ -4,7 +4,7 @@
 
 ## 启动与权限
 
-读取 `config/research-task.json`、本提示词、`schemas/project-package.v1.schema.json`、引用的 `schemas/demand-batch.v1.schema.json` 和 `docs/agent-project-operations.md`。必须是同一经过审查的代码版本。配置 enabled=false、任一 activation_checks=false、私有绑定/工件目录缺失，立即报告“未启用”，不得搜索、调用模型或提交。不得自行开启开关或扩大网络权限。调度入口暂停时不运行。
+读取 `config/research-task.json`、本提示词、`schemas/agent-review.v1.schema.json`、`schemas/project-package.v1.schema.json`、引用的 `schemas/demand-batch.v1.schema.json` 和 `docs/agent-project-operations.md`。必须是同一经过审查的代码版本。配置 enabled=false、任一 activation_checks=false、私有绑定/工件目录缺失，立即报告“未启用”，不得搜索、调用模型或提交。不得自行开启开关或扩大网络权限。调度入口暂停时不运行。
 
 只使用已授权的 OpenAI/DeepSeek。Codex 当前执行模型属于 OpenAI；可在已有授权及工具支持时调用配置好的 DeepSeek API，不能假定两者都可用。没有 DeepSeek 接口也可由 Codex 执行全过程，不编造调用记录。不得读取聊天历史恢复密钥，不把密钥写进提示词、查询、包、日志或 Git。
 
@@ -52,7 +52,26 @@
 - 用户的付款条件与未满足点有原文支持；许可证、泛化抱怨、竞品售价、广告和“可能会买”不能自行升级为强付费证据。
 - 比较反证、替代方案、成本与获客方式，明确范围、排除项、验收标准和风险。证据不足不能为了目标数量批准。
 
-通过模型的第二轮反向检查：是否混淆作者/时间、忽略条件、重复计人、把免费替代说成不存在、把推断写成事实？有阻塞疑点回到补证，不导入。可由同一模型分轮完成，不强制多模型或并行调用。
+### 固定模型输出与计数
+
+一次只处理一个候选，提供该候选全部必要原文、后续回复、反证及完整目录，避免把多个候选和无关长文塞进一个响应。模型输出必须是 `agent-review.v1.schema.json` 的单个对象；将此 schema 及其候选引用 schema 一并提供给模型。不能使用自由格式的 candidates/overall/safe_to_import_ids，也不能让模型输出自报人数。仅有 JSON mode 或 finish_reason=stop 不表示合格；API 拒绝、未完成、空内容或截断均算失败。
+
+- 顶层固定提供 schema_version、rules_version、provider、model、reviewed_at、reasoning、deduplication、catalog_revision、task_key、verdict、self_service、distinct_from_existing、candidate、evidence。candidate 沿用现有候选结构，保留未通过来源和未知项；evidence 恰好覆盖所有来源 ID。
+- 每条审查必须提供 evidence_id、user_key、relevant、original、direct_user、unmet_quote、payment_quote、price_quote、spend_quote、conditions_supported、reason。user_key 是模型归并后的独立用户标识，同人多帖/跨站别名使用同一 key，无法判断则 null；不能用 evidence_id 当用户 key。
+- relevant 指同一核心任务，original 指原始而非转载，direct_user 排除创作者宣传、提问者假设和他人转述。unmet_quote 必须来自本条原文中的真实未满足点；已解决、满意或无关付费不能代替缺口。后续补充须追溯同一作者及实际发帖时间，不能忽略或借用别人的说明。同一 user_key 的相关有效证据组可分别提供痛点与付款原话；付款跟帖没有重述痛点时 unmet_quote 留空，不复制前帖原话到另一条证据。模型须在 reason 说明组内关联，已被后文解决的旧痛点须撤回相应未满足判断。
+- candidate.evidence[].signal 分清 explicit_wtp / currently_paying / pain_only / unclear。“解决这个问题我愿意付款”可为 explicit_wtp；不必已经购买。payment_quote 保留直接意愿或真实支出的原话。spend_quote 只记录 currently_paying 的可定位实际消费，无金额也有效。至少一条价格或消费是整体要求，不要求每位付费用户都有金额。
+- price_quote 仅用于原文明确的金额、币种和单位，单独的 `$` 不能补成 USD。conditions 保存原文条件短句，conditions_supported 由模型判断条件是否与当前方案一致并有支持；不能把未满足的付款条件改成无条件意愿。无相关引用时用空字符串。引用必须在对应 candidate.evidence.quote 的必要上下文中，不能拼接他人的帖子。
+- published_at 未知、只有日期/模糊相对时间而无可核实时区和精度时使用 null，不能以抓取日期或页面其他新回复冒充原帖时间。模型记录时间不确定性与待补证原因；本版保守地不把未知发布时间算进有效人数。
+
+保存完整原始响应与调用元数据到私有目录，从实际返回内容取出 JSON，运行：
+
+`bin/creative-admin review-check --file <单候选审查JSON>`
+
+成功输出逐条 valid/payment/priced、独立人数、原始站点数、付费人数、价格或消费人数及 review_sha256。计数按用户集合取并集，同一人的补充付费留言不会因先出现痛点留言而被漏掉；站点按注册域归并。eligible 只表示机械门槛满足，不能替代模型 verdict 或反证审查。错误退出非零则不得继续构造包；不得补括号、挪字段、正则提取“可用片段”或手工将失败响应改成已通过。
+
+将校验错误和原始响应交回模型，要求依据相同 schema 重新生成完整对象；每个候选最多额外两次格式纠正，分别记录用量。仍失败则保留工件并报告 paused_service。这是失败处理上限，不是搜索次数上限。不得自动丢弃困难证据使对象通过。
+
+通过模型的第二轮反向检查：必须带上校验计数与完整必要上下文，检查混淆作者/时间、忽略条件/后续补充、重复计人、把免费替代说成不存在、把推断写成事实等。修改任何候选事实或标记后重新输出完整审查 JSON 并运行校验；有阻塞疑点回到 needs_evidence，不导入。可由同一模型分轮完成，不强制多模型或并行调用。
 
 ## 5. 构造立项包与导入
 
@@ -66,7 +85,9 @@
 
 调用前分配稳定 usage_id 记实际搜索、模型、工具用量。未知费用 reported_cost/currency/billing_reference=null、cost_status=unknown，不填零；重试调用是新 usage_id，同一次调用补账沿用 ID。不能把桌面执行费用伪装成站内 API 消费。
 
-把 JSON 保存到私有文件，执行 stage 冻结原字节与 SHA-256，再 submit。脚本依据冻结 schema 固定调用 projects，模型不得指定 URL。单包 1 MiB 为传输上限，不是研究次数限制。导入 202 且 status=completed 表示事务已创建已立项记录，随后 receipt 核对 need_id、qualified_count、remaining_gap 与 task_state。不得把 HTTP 成功误写成开发完成或上线。
+将最终候选和模型记录原样复制到立项包；逐条 valid/payment/priced/reason 使用最近一次 review-check 的结果，不再自由重算。保存私有文件后必须执行 `bin/creative-admin review-check --file <最终审查JSON> --project <待提交包JSON>`。只有零退出、verdict=approved、eligible=true 且输出 project_sha256 与待 stage 原字节一致才进入 stage；如包修改，必须重新检查。校验工具不可用时停止，不能绕过。
+
+再执行 stage 冻结同一原字节与 SHA-256，核对冻结哈希等于 project_sha256 后 submit。脚本依据冻结 schema 固定调用 projects，模型不得指定 URL。单包 1 MiB 为传输上限，不是研究次数限制。导入 202 且 status=completed 表示事务已创建已立项记录，随后 receipt 核对 need_id、qualified_count、remaining_gap 与 task_state。不得把 HTTP 成功误写成开发完成或上线。已冻结历史包按原字节查询/重试，不强制补新审查或重写历史 outbox。
 
 catalog_changed：重新取完整目录并重新整合判断，用新 batch_id；project_duplicate/project_alias_conflict：整合原需求，不改标题/key 绕过；版本冲突：重新读取目录和实际状态，不覆盖正在开发的项目。401/403/421 停止并报告绑定问题；400/413/422 保留原包，纠正契约后用新 ID；409 字节冲突停止该包；429 遵守 Retry-After；网络/5xx 每次最多额外重试两次，仍失败保留未知结果，不扩大权限。
 

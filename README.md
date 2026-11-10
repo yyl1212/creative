@@ -4,6 +4,8 @@
 
 定时搜寻保持禁用。已提供 Codex 提示词任务、新立项包契约、完整需求目录接口和固定 outbox 传输工具；真实联网及跨运行验收通过前不启用。见 [外部模型立项运行说明](docs/agent-project-operations.md)、[验证记录](docs/agent-project-validation.md)；旧流程见 [运行手册](docs/research-task-operations.md)。
 
+外部模型审查使用 [单候选 JSON 契约](schemas/agent-review.v1.schema.json)，先执行 `creative-admin review-check --file <审查JSON>` 去重计数，提交前加 `--project <立项包JSON>` 核对一致性。失败响应不自动修补；流程与限制见运行说明。
+
 管理后台主导航为总览、需求池、开发工作区、导入记录、费用与用量五项。日期日报和备份状态并入总览，接收会话并入导入记录，智能体接入位于页头次级入口；开发技术表单可展开登记。搜寻、分析和立项判断全部由外部 Codex 完成；网站不加载模型配置、不抓取原文、不消费旧研究队列。发布与备份恢复仍通过受控 CLI，维护循环保留数据清理和最近 7 份一致性备份。见 [运维手册](docs/operations.md)。
 
 ## 本地运行
