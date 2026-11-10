@@ -210,19 +210,19 @@ func TestInitialOverview(t *testing.T) {
 	b, db, _ := setup(t)
 	b.login(t)
 	w := b.request("GET", "/admin/", nil, nil)
-	for _, label := range []string{"需求总数", "历史合格需求", "已完成需求", "产品数量"} {
+	for _, label := range []string{"需求总数", "已完成需求", "产品数量"} {
 		if !strings.Contains(w.Body.String(), label) {
 			t.Fatal(label)
 		}
 	}
-	if strings.Count(w.Body.String(), `data-count="0"`) != 4 || !strings.Contains(w.Body.String(), "未接入 / 未知") {
+	if strings.Count(w.Body.String(), `data-count="0"`) != 3 || !strings.Contains(w.Body.String(), "未启用") {
 		t.Fatal("initial state not real zero/unknown")
 	}
 	if _, err := db.Exec("INSERT INTO needs(status,verified_at,valid_until,rules_version) VALUES ('qualified',unixepoch(),unixepoch()+3600,'strong-wtp.v1')"); err != nil {
 		t.Fatal(err)
 	}
 	w = b.request("GET", "/admin/", nil, nil)
-	if strings.Count(w.Body.String(), `data-count="1"`) != 2 {
+	if strings.Count(w.Body.String(), `data-count="1"`) != 1 {
 		t.Fatal("counts not read from DB")
 	}
 }

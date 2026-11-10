@@ -7,28 +7,10 @@ import (
 )
 
 func (a *App) operationsRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /admin/reports", a.reportsPage)
+	mux.HandleFunc("GET /admin/reports", a.overview)
 	mux.HandleFunc("GET /admin/settings", a.settingsPage)
 	mux.HandleFunc("POST /admin/settings", a.retiredResearchAction)
 	mux.HandleFunc("POST /admin/usage/{id}/reconcile", a.reconcileUsage)
-}
-
-func (a *App) reportsPage(w http.ResponseWriter, r *http.Request) {
-	u, ok := a.current(w, r)
-	if !ok {
-		return
-	}
-	report, err := a.research.DailyReport(r.URL.Query().Get("date"))
-	if err != nil {
-		a.adminResearchError(w, r, u, err)
-		return
-	}
-	backup, err := a.research.BackupStatus()
-	if err != nil {
-		a.adminResearchError(w, r, u, err)
-		return
-	}
-	a.render(w, r, "reports.html", http.StatusOK, view{Username: u.Username, Page: "reports", Report: &report, Backup: backup})
 }
 
 func (a *App) settingsPage(w http.ResponseWriter, r *http.Request) {

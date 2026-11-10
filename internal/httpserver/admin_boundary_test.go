@@ -21,7 +21,7 @@ func TestAdminResearchBoundary(t *testing.T) {
 		}
 	}
 	page := b.request("GET", "/admin/tasks", nil, nil)
-	if !strings.Contains(page.Body.String(), "接收记录") {
+	if !strings.Contains(page.Body.String(), "接收会话") {
 		t.Fatal("missing read-only records")
 	}
 	csrf := token(t, page)

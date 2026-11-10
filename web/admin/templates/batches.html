@@ -1,6 +1,8 @@
 {{template "research-header" .}}
-<div class="page-heading"><h1>提交批次</h1><p>查看执行端提交的原始材料与接收状态。</p></div>
-<section class="panel batch-list" aria-label="批次列表">{{range .Batches}}<article class="list-item"><div class="item-heading"><h2><a class="text-link" href="/admin/batches/{{.ID}}">{{.BatchID}}</a></h2><span class="status">{{stateLabel .Status}}</span></div><p>{{.ProducerName}} · {{.CandidateCount}} 条候选</p><p class="field-help"><time datetime="{{.ReceivedAt}}">{{.ReceivedAt}}</time>（UTC）</p></article>{{else}}<p class="empty-note">暂无提交批次。已接收的批次会显示在这里。</p>{{end}}</section>
+<div class="page-heading"><h1>导入记录</h1><p>查看外部智能体提交的立项包、运行报告与历史资料。</p></div>
+{{if not .APIEnabled}}<p class="notice">数据接收接口尚未启用，已有记录仍可查看。</p>{{end}}
+{{template "intake-sessions" .}}
+<section class="panel batch-list" aria-label="批次列表">{{range .Batches}}<article class="list-item"><div class="item-heading"><h2><a class="text-link" href="/admin/batches/{{.ID}}">{{.BatchID}}</a></h2><span class="status">{{stateLabel .Status}}</span></div><p>{{.ProducerName}} · {{.CandidateCount}} 条需求材料</p><p class="field-help"><time datetime="{{.ReceivedAt}}">{{.ReceivedAt}}</time>（UTC）</p></article>{{else}}<p class="empty-note">暂无导入记录。外部智能体提交的立项包或空报告接收后会显示在这里。</p>{{end}}</section>
 <nav class="pagination" aria-label="批次分页"><a class="text-link" href="/admin/batches">最新批次</a>{{if .NextBefore}}<a class="text-link" href="/admin/batches?before={{.NextBefore}}">更早批次 →</a>{{end}}</nav>
-<p class="footnote">接收成功仅表示材料已保存，不代表付费证据合格或允许开发。</p>
+<p class="footnote">立项包导入成功后进入“已立项、待开发设计”；空报告只记录运行情况，历史批次保留原结论。接收成功不代表已完成开发或上线。</p>
 {{template "research-footer" .}}

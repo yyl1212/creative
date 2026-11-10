@@ -1,10 +1,9 @@
-{{template "research-header" .}}
-<div class="page-heading"><h1>接收记录</h1><p>查看外部 Codex 登记的接收会话与目标进度。搜寻、分析和立项判断由外部智能体完成。</p></div>
-{{if not .APIEnabled}}<p class="notice">数据接收接口尚未启用，已有记录仍可查看。</p>{{end}}
-<section class="panel list-panel" aria-labelledby="task-list"><h2 id="task-list">各智能体当前接收会话</h2>
+{{define "intake-sessions"}}
+<section class="panel list-panel batch-detail"><details id="intake-sessions"><summary>接收会话与目标进度（只读）</summary>
 {{range .Tasks}}<article class="list-item"><div class="item-heading"><h3>{{range $i,$topic:=.Topics}}{{if $i}} / {{end}}{{$topic}}{{end}}</h3><span class="status">{{stateLabel .State}}</span></div>
 <p>已计入 {{.QualifiedCount}} / {{.TargetCount}} · 还需 {{.RemainingGap}} 条</p><p class="field-help">智能体：{{.ProducerName}} · 版本 {{.Version}}</p><p class="identifier">{{.ID}}</p>
 {{if .ResumeCondition}}<p class="field-help">{{.ResumeCondition}}</p>{{end}}</article>
-{{else}}<p class="empty-note">暂无接收会话。外部 Codex 登记后，这里会显示实际接收进度。</p>{{end}}</section>
-<p class="footnote">此页只展示数据接收状态，不代表 Codex 定时任务的运行状态。会话的登记与恢复由外部 Codex 按授权通过私有 CLI 完成；历史批次在「导入批次」查看。</p>
-{{template "research-footer" .}}
+{{else}}<p class="empty-note">暂无接收会话。外部 Codex 登记后，这里会显示实际接收进度。</p>{{end}}
+<p class="footnote">接收会话只展示主题与目标进度，不代表 Codex 定时任务状态。会话由外部 Codex 按授权管理。</p>
+</details></section>
+{{end}}

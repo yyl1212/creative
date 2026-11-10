@@ -57,7 +57,6 @@ type view struct {
 	Error        string
 	Username     string
 	Needs        int
-	Qualified    int
 	Completed    int
 	Products     int
 	Page         string
@@ -278,11 +277,22 @@ func (a *App) overview(w http.ResponseWriter, r *http.Request) {
 	}
 	data := view{Username: user.Username, Products: a.productCount, Page: "overview", APIEnabled: a.apiHost != ""}
 	var err error
-	data.Needs, data.Qualified, data.Completed, err = a.research.Counts()
+	data.Needs, _, data.Completed, err = a.research.Counts()
 	if err != nil {
 		http.Error(w, "数据暂不可用", 500)
 		return
 	}
+	report, err := a.research.DailyReport(r.URL.Query().Get("date"))
+	if err != nil {
+		a.adminResearchError(w, r, user, err)
+		return
+	}
+	backup, err := a.research.BackupStatus()
+	if err != nil {
+		a.adminResearchError(w, r, user, err)
+		return
+	}
+	data.Report, data.Backup = &report, backup
 	a.render(w, r, "index.html", 200, data)
 }
 func (a *App) logout(w http.ResponseWriter, r *http.Request) {

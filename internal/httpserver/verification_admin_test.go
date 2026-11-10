@@ -66,7 +66,7 @@ func TestVerificationAdminViewsAndRetiredRetry(t *testing.T) {
 		t.Fatal("need detail", w.Code, w.Body.String())
 	}
 	w = b.request("GET", "/admin/", nil, nil)
-	if strings.Count(w.Body.String(), `data-count="0"`) != 3 {
+	if strings.Count(w.Body.String(), `data-count="0"`) != 2 {
 		t.Fatal("expired qualified counted")
 	}
 	for i := 0; i < 2; i++ {

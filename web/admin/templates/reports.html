@@ -1,11 +1,10 @@
-{{template "research-header" .}}
-<div class="page-heading"><h1>经营日报</h1><p>按上海自然日查看接收、核验、立项与发布结果。</p></div>
-<section class="panel form-panel batch-detail" aria-label="选择报告日期"><form method="get" action="/admin/reports"><label for="report-date">上海日期</label><input type="date" id="report-date" name="date" value="{{.Report.Date}}" required><button type="submit">查看日报</button></form></section>
+{{define "report-summary"}}
+<section class="panel form-panel batch-detail" id="daily-report" aria-labelledby="report-heading"><h2 id="report-heading">经营日报</h2><p class="field-help">按上海自然日查看已保存的研究结论、立项和发布记录；包含历史流程数据。</p><form class="report-filter" method="get" action="/admin/#daily-report"><div><label for="report-date">上海日期</label><input type="date" id="report-date" name="date" value="{{.Report.Date}}" required></div><button type="submit">查看日报</button></form></section>
 {{with .Report}}
 <section class="metrics" aria-label="经营指标">
-<article><h2>接收候选</h2><strong>{{.Received}}</strong><p>当天接收批次中的候选数</p></article>
-<article><h2>完成核验</h2><strong>{{.Verified}}</strong><p>包含合格与未通过的核验结果</p></article>
-<article><h2>批准立项</h2><strong>{{.Approved}}</strong><p>当天登记的批准操作</p></article>
+<article><h2>收到需求材料</h2><strong>{{.Received}}</strong><p>当天批次中的需求条数，空报告不计入</p></article>
+<article><h2>研究结论记录</h2><strong>{{.Verified}}</strong><p>外部导入及历史保存的判断结论</p></article>
+<article><h2>登记立项</h2><strong>{{.Approved}}</strong><p>含外部立项、复核及历史人工立项；每次登记计一次</p></article>
 <article><h2>已核验上线</h2><strong>{{.Launched}}</strong><p>当天核验且当前仍有效的发布</p></article>
 <article><h2>失败需求</h2><strong>{{.Failed}}</strong><p>开发或发布失败，同一需求计一次</p></article>
 <article><h2>未知费用</h2><strong>{{.UnknownCosts}}</strong><p>缺少明确金额，未按零计入</p></article>
@@ -14,4 +13,4 @@
 <p class="field-help">费用归属调用发生日，后续核账回填原消费日。自报与实际金额分别展示，各币种独立汇总；没有核账记录时不显示为已确认零费用。</p>
 {{end}}
 <section class="panel batch-detail" aria-labelledby="backup-heading"><h2 id="backup-heading">最近备份</h2>{{with .Backup}}<p><span class="status">{{if .Success}}备份成功{{else}}备份失败{{end}}</span> · {{.Time}}（UTC）</p>{{if .File}}<p class="identifier">{{.File}}</p>{{end}}{{if not .Success}}<p class="field-help">请检查备份目录与磁盘空间，当前记录不能证明已有可恢复备份。</p>{{end}}{{else}}<p class="empty-note">尚无备份结果。首次维护完成后在此显示。</p>{{end}}</section>
-{{template "research-footer" .}}
+{{end}}

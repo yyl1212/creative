@@ -362,6 +362,11 @@ func TestDailyReportLifecycleCounts(t *testing.T) {
 	if _, err := db.Exec("INSERT INTO audit_events(action,account,source,created_at) VALUES ('need_approved','admin','offline',?)", start); err != nil {
 		t.Fatal(err)
 	}
+	for _, stamp := range []int64{start - 1, start, start + 86400 - 1, start + 86400} {
+		if _, err := db.Exec("INSERT INTO audit_events(action,account,source,created_at) VALUES ('project_imported','agent:fixture','research_api',?)", stamp); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if _, err := db.Exec("INSERT INTO release_records(need_id,record_version,commit_sha,slug,origin,manifest_hash,manifest,state,verified_at) VALUES (51,1,?,'one','https://example.org','hash1','{}','verified',?),(52,1,?,'two','https://example.org','hash2','{}','failed',?)", strings.Repeat("a", 40), start, strings.Repeat("a", 40), start); err != nil {
 		t.Fatal(err)
 	}
@@ -369,7 +374,7 @@ func TestDailyReportLifecycleCounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	report, err := s.DailyReport("2026-11-09")
-	if err != nil || report.Received != 2 || report.Verified != 1 || report.Approved != 1 || report.Launched != 1 || report.Failed != 2 {
+	if err != nil || report.Received != 2 || report.Verified != 1 || report.Approved != 3 || report.Launched != 1 || report.Failed != 2 {
 		t.Fatalf("lifecycle report: %+v %v", report, err)
 	}
 }

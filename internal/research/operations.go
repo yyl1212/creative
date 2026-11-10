@@ -231,7 +231,7 @@ func (s *Service) DailyReport(date string) (DailyReport, error) {
 	}{
 		{"SELECT count(*) FROM research_candidates c JOIN research_batches b ON b.id=c.batch_row WHERE b.created_at>=? AND b.created_at<?", &report.Received},
 		{"SELECT count(*) FROM need_verifications WHERE verified_at>=? AND verified_at<?", &report.Verified},
-		{"SELECT count(*) FROM audit_events WHERE action='need_approved' AND created_at>=? AND created_at<?", &report.Approved},
+		{"SELECT count(*) FROM audit_events WHERE action IN ('need_approved','project_imported') AND created_at>=? AND created_at<?", &report.Approved},
 		{"SELECT count(DISTINCT need_id) FROM release_records WHERE state='verified' AND verified_at>=? AND verified_at<?", &report.Launched},
 		{"SELECT count(DISTINCT need_id) FROM (SELECT need_id,verified_at AS stamp FROM release_records WHERE state='failed' UNION ALL SELECT need_id,updated_at AS stamp FROM development_records WHERE state='failed') WHERE stamp>=? AND stamp<?", &report.Failed},
 	} {

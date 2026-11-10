@@ -76,7 +76,7 @@ func TestResearchAdminWorkflow(t *testing.T) {
 	if w = apiRequest(b.app, "GET", "task", nextSecret, nil); w.Code != 401 {
 		t.Fatal("revoked credential still valid")
 	}
-	if w = b.request("GET", "/admin/", nil, nil); w.Code != 200 || strings.Count(w.Body.String(), `data-count="0"`) != 4 {
+	if w = b.request("GET", "/admin/", nil, nil); w.Code != 200 || strings.Count(w.Body.String(), `data-count="0"`) != 3 {
 		t.Fatal("receipt created a product or qualified need")
 	}
 	for _, path := range []string{"/admin/tasks/x/cancel", "/admin/producers/x/revoke"} {
@@ -120,7 +120,7 @@ func TestAdminBatchesPaginationAndInvalidForms(t *testing.T) {
 		t.Fatal("first page boundary")
 	}
 	w = b.request("GET", "/admin/batches?before=2", nil, nil)
-	if w.Code != 200 || !strings.Contains(w.Body.String(), "page-001") || strings.Contains(w.Body.String(), "page-002") {
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "page-001") || strings.Contains(w.Body.String(), "page-002") || !strings.Contains(w.Body.String(), task.ID) {
 		t.Fatal("second page boundary")
 	}
 }
